@@ -11,6 +11,12 @@ mount boundaries, request elevated privileges or implement cleanup. Generic
 filesystem, shell and frontend dialog permissions remain unavailable. Scans are
 not atomic filesystem snapshots; concurrent changes and inaccessible entries
 produce qualified coverage. See [scanner contract](docs/specs/features/scan-foundation.md).
+After measurement, scoped development recognition reads bounded known manifests,
+configuration and cache markers. Optional Git status uses installed CLT Git under
+macOS read/write/network/exec confinement, never hooks or missing-tool installers.
+It may read repository contents to determine change status, but returns no contents
+or raw command output. Recognition is inspection-only, not deletion authority.
+See [recognition boundaries](docs/specs/features/development-recognition.md).
 There is no supported release line or promised security maintenance window. No
 security audit or finalized deletion policy is claimed.
 

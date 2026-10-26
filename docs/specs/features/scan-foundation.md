@@ -304,3 +304,15 @@ Repair evidence:
 - `cargo clippy -p reclaim-desktop --lib --tests --locked -- -D warnings` passed.
 - Existing release-build and native WebView IPC evidence above is reused; neither
   was rerun for this native authority repair.
+
+
+## Recognition consumer extension
+
+The development-recognition producer now runs bounded recognition after the
+metadata-only walker and before this worker publishes terminal status. Existing
+measurement DTOs, scope, generation, page and cancellation semantics remain intact.
+`ScanData.recognition` and `recognition_page` share this native session; see the
+[recognition contract](development-recognition.md) for selective metadata-content
+reads, optional confined Git status, limits and inspection-only eligibility.
+`scan_cancel` cancels either phase. Measurement-only descriptions above concern
+the walker, not the recognition phase's explicitly documented content reads.

@@ -14,7 +14,8 @@ fn main() {
             scan::scan_current,
             scan::scan_status,
             scan::scan_page,
-            scan::scan_cancel
+            scan::scan_cancel,
+            scan::recognition_page
         ])
         .run(tauri::generate_context!())
         .expect("Failed to run Reclaim desktop application");
