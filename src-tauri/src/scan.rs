@@ -2,6 +2,7 @@
 
 use reclaim_core::scan::{self, lock, Finding, Issue, Progress, Root, ScanData, Status, Volume};
 use serde::Serialize;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -127,17 +128,31 @@ impl Authority {
 
     fn add_candidate(&mut self, path: &Path) -> BoundaryResult<Location> {
         let path = path.canonicalize()?;
-        if let Some(candidate) = self
+        let root = Root::open(&path)?;
+        if let Some(index) = self
             .candidates
             .iter()
-            .find(|candidate| candidate.root.path == path)
+            .position(|candidate| candidate.root.path == path)
         {
-            return Ok(candidate.location.clone());
+            let current_identity = root.directory.metadata()?;
+            let granted_identity = self.candidates[index].root.directory.metadata()?;
+            if current_identity.dev() == granted_identity.dev()
+                && current_identity.ino() == granted_identity.ino()
+            {
+                return Ok(self.candidates[index].location.clone());
+            }
+            let stale_id = self.candidates.remove(index).location.id;
+            if self
+                .scope
+                .as_ref()
+                .is_some_and(|scope| scope.roots.iter().any(|location| location.id == stale_id))
+            {
+                self.scope = None;
+            }
         }
         if self.candidates.len() >= MAX_CANDIDATES {
             return Err(ErrorCode::InvalidRequest.into());
         }
-        let root = Root::open(&path)?;
         let location = Location {
             id: token(),
             display_path: scan::display(path.as_os_str()),
@@ -261,7 +276,6 @@ impl ScanService {
             let current = Root::open(&candidate.root.path)?;
             let current_identity = current.directory.metadata()?;
             let granted_identity = candidate.root.directory.metadata()?;
-            use std::os::unix::fs::MetadataExt;
             if current_identity.dev() != granted_identity.dev()
                 || current_identity.ino() != granted_identity.ino()
             {
@@ -411,9 +425,6 @@ pub async fn scan_pick_folder<R: Runtime>(
         let mut authority = lock(&service.authority);
         if authority.picking {
             return Err(ErrorCode::Busy.into());
-        }
-        if authority.candidates.len() >= MAX_CANDIDATES {
-            return Err(ErrorCode::InvalidRequest.into());
         }
         authority.picking = true;
     }
@@ -683,6 +694,122 @@ mod tests {
         assert_eq!(
             service.start(&scope.id).unwrap_err().code,
             ErrorCode::InvalidScope
+        );
+    }
+
+    #[test]
+    fn explicit_reselection_replaces_stale_grants_and_requires_new_scope() {
+        let temporary = tempfile::tempdir().unwrap();
+        let selected = temporary.path().join("selected");
+        fs::create_dir(&selected).unwrap();
+        fs::write(selected.join("original"), b"old").unwrap();
+        let service = ScanService::default();
+        let original = service.register_native_location(&selected).unwrap();
+        let old_scope = lock(&service.authority)
+            .register(std::slice::from_ref(&original.id))
+            .unwrap();
+        assert_eq!(
+            service.register_native_location(&selected).unwrap().id,
+            original.id
+        );
+
+        fs::rename(&selected, temporary.path().join("moved")).unwrap();
+        fs::create_dir(&selected).unwrap();
+        fs::write(selected.join("replacement"), b"replacement").unwrap();
+        assert_eq!(
+            service.start(&old_scope.id).unwrap_err().issue,
+            Some(Issue::Changed)
+        );
+        assert!(lock(&service.authority).session.is_none());
+
+        let replacement = service.register_native_location(&selected).unwrap();
+        assert_ne!(replacement.id, original.id);
+        assert_eq!(lock(&service.authority).candidates.len(), 1);
+        assert!(lock(&service.authority).scope.is_none());
+        assert_eq!(
+            service.start(&old_scope.id).unwrap_err().code,
+            ErrorCode::InvalidScope
+        );
+        assert_eq!(
+            service.start(&replacement.id).unwrap_err().code,
+            ErrorCode::InvalidScope
+        );
+        assert_eq!(
+            lock(&service.authority)
+                .register(&[original.id])
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidScope
+        );
+        let new_scope = lock(&service.authority)
+            .register(std::slice::from_ref(&replacement.id))
+            .unwrap();
+        assert_ne!(new_scope.id, old_scope.id);
+        assert_eq!(
+            service.start(&old_scope.id).unwrap_err().code,
+            ErrorCode::InvalidScope
+        );
+        let started = service.start(&new_scope.id).unwrap();
+        let progress = terminal(&service);
+        assert_eq!(progress.status, Status::Complete);
+        assert_eq!(progress.logical_bytes, 11);
+        assert_eq!(
+            service
+                .with_terminal_scan(started.generation, |data| data
+                    .records
+                    .iter()
+                    .map(|record| record.name.clone())
+                    .collect::<Vec<_>>())
+                .unwrap(),
+            vec![
+                selected.canonicalize().unwrap().into_os_string(),
+                "replacement".into()
+            ]
+        );
+        assert_eq!(
+            service.register_native_location(&selected).unwrap().id,
+            replacement.id
+        );
+        assert_eq!(
+            service.start(&old_scope.id).unwrap_err().code,
+            ErrorCode::InvalidScope
+        );
+        assert_eq!(
+            fs::read(temporary.path().join("moved/original")).unwrap(),
+            b"old"
+        );
+    }
+
+    #[test]
+    fn candidate_limit_allows_reselection_but_rejects_new_locations() {
+        let temporary = tempfile::tempdir().unwrap();
+        let service = ScanService::default();
+        let mut locations = Vec::new();
+        for index in 0..MAX_CANDIDATES {
+            let path = temporary.path().join(format!("candidate-{index}"));
+            fs::create_dir(&path).unwrap();
+            locations.push(service.register_native_location(&path).unwrap());
+        }
+        let selected = temporary.path().join("candidate-0");
+        assert_eq!(
+            service.register_native_location(&selected).unwrap().id,
+            locations[0].id
+        );
+        fs::rename(&selected, temporary.path().join("moved")).unwrap();
+        fs::create_dir(&selected).unwrap();
+        assert_ne!(
+            service.register_native_location(&selected).unwrap().id,
+            locations[0].id
+        );
+        assert_eq!(lock(&service.authority).candidates.len(), MAX_CANDIDATES);
+        let additional = temporary.path().join("additional");
+        fs::create_dir(&additional).unwrap();
+        assert_eq!(
+            service
+                .register_native_location(&additional)
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidRequest
         );
     }
 

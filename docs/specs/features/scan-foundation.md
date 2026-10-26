@@ -274,3 +274,33 @@ Byte quantities use unsigned 64-bit storage and saturating arithmetic. Values at
 that representable range; consumers must qualify capped values. Coverage status
 describes enumeration/entry errors, independently of this numeric representation
 limit. Ordinary fixture sizes and per-volume arithmetic are verified above.
+
+## Explicit reselection after root replacement
+
+Acceptance: selecting the same canonical path reuses its location ID only when
+its opened device/inode identity still matches. Explicitly selecting a replacement
+object issues a new location ID, retires the old candidate and invalidates any
+registered scope containing it. A new scope registration is required; start never
+refreshes or retargets authority. Stale location/scope IDs fail closed. Reselection
+can replace a cached candidate even at the 32-candidate limit. Existing scan-session
+observations and their anchored worker handles remain unchanged.
+
+Isolated regression: grant/register a folder, replace it, reject the old start as
+changed, explicitly reselect the same path, reject stale identifiers, register a
+new scope and scan only the replacement. Repeated selection of the unchanged
+replacement retains its new location ID.
+
+
+Repair evidence:
+
+- Before repair, `cargo test -p reclaim-desktop --lib explicit_reselection_replaces_stale_grants_and_requires_new_scope --locked`
+  failed because explicit reselection returned the original location ID.
+- After repair, `cargo test -p reclaim-desktop --lib --locked -- --skip ipc_dispatch_serializes_bytes_rejects_invalid_payload_and_wrong_window`
+  exited 0: five focused authority tests passed, one unchanged IPC test excluded.
+  Regression scans only the 11-byte replacement and preserves the moved original;
+  retired location/scope IDs fail before and after new registration. At capacity,
+  replacement grants still succeed while additional locations remain rejected.
+- `cargo fmt -p reclaim-desktop -- --check` passed.
+- `cargo clippy -p reclaim-desktop --lib --tests --locked -- -D warnings` passed.
+- Existing release-build and native WebView IPC evidence above is reused; neither
+  was rerun for this native authority repair.
