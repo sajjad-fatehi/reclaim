@@ -34,7 +34,8 @@ export function ScanSettings(): ReactElement {
       <h2>Scan locations</h2>
       <p>
         Find what is using your disk space. Review locations before starting;
-        Reclaim reads metadata, never file contents.
+        Read-only scanning measures filesystem metadata and selectively reads
+        project/tool metadata for recognition. No files are changed.
       </p>
       {state.loading ? (
         <p>Loading saved settings and suggested locations…</p>

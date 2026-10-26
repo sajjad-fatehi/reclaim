@@ -209,3 +209,34 @@ a remainder derived from capped used/allocation values is unavailable rather tha
 an exact difference. Synthetic boundary DTOs prove this without creating huge files.
 Merge only approved `origin/dev` at `be65554`, preserving recognition phase,
 structs/tests/ACL alongside exclusions, preferences and current-location state.
+
+Recognition integration preserves the producer's selective project/tool metadata
+reads. First-run scope copy describes these reads rather than promising no file
+contents are read; exclusions still prevent child traversal and recognition of
+unvisited contents. Native fixture proof combines excluded subtree coverage,
+recognition output, current root and shared generation authority.
+
+Review follow-up evidence:
+
+- `npm test -- src/scan/session.test.tsx`: 15 passed; includes native maximum,
+  maximum-plus-one category sum, independent logical/allocated cap propagation,
+  ordinary-value formatting and rendered capped-volume strip suppression. Initial
+  row-name locator failed; corrected to locate the labelled investigation control
+  and its table row. No production failure was hidden by that test-only correction.
+- `npm run typecheck`: passed. Targeted `npx eslint` with `--max-warnings 0`
+  and `npx prettier --check` over accounting, Overview, ScanSettings and session
+  tests passed. `cargo fmt --all -- --check` and `git diff --check` passed.
+- `cargo test -p reclaim-core --lib --locked`: 24 passed after integration,
+  including scanner exclusions, recognition cancellation and capped recognition
+  accounting. `cargo test -p reclaim-desktop --lib --locked`: nine passed,
+  including the combined exclusion/recognition/current-location/shared-authority
+  fixture and native recognition IPC/ACL checks.
+- `cargo clippy -p reclaim-core -p reclaim-desktop --all-targets --locked -- -D warnings`:
+  passed. Recognition implementation/tests remain byte-identical to `be65554`.
+- Approved dev merge resolves only scan-foundation contract appendices and scan
+  command ACL; both contract appendices and every preference/scan/recognition
+  permission remain present. No unfinished Docker branch imported.
+
+Existing reviewed native light/dark captures are reused. No huge files, new visual
+review, native fixture scan, release build, push or hosted CI run was needed for
+this numeric presentation correction and focused integration proof.

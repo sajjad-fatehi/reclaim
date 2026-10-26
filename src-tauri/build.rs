@@ -11,6 +11,7 @@ fn main() {
             "scan_status",
             "scan_page",
             "scan_cancel",
+            "recognition_page",
         ]),
     ))
     .expect("Failed to build native application permissions");

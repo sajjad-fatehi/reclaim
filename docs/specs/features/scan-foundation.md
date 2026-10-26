@@ -313,3 +313,14 @@ exclusions, `Issue::Excluded` and `Progress.currentLocation`. Existing scan comm
 callers remain compatible; omitted exclusions mean none. This extends the same
 scanner and native scope registry, not a second producer. Persisted paths cannot
 start scans; explicit registration and native identity validation remain required.
+
+## Recognition consumer extension
+
+The development-recognition producer now runs bounded recognition after the
+metadata-only walker and before this worker publishes terminal status. Existing
+measurement DTOs, scope, generation, page and cancellation semantics remain intact.
+`ScanData.recognition` and `recognition_page` share this native session; see the
+[recognition contract](development-recognition.md) for selective metadata-content
+reads, optional confined Git status, limits and inspection-only eligibility.
+`scan_cancel` cancels either phase. Measurement-only descriptions above concern
+the walker, not the recognition phase's explicitly documented content reads.

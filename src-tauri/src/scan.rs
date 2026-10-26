@@ -89,6 +89,20 @@ pub struct Page {
     pub findings: Vec<Finding>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecognitionPage {
+    pub generation: u32,
+    pub finished: bool,
+    pub cancelled: bool,
+    pub limited: bool,
+    pub offset: usize,
+    pub next_offset: Option<usize>,
+    pub findings: Vec<reclaim_core::recognition::Artifact>,
+    pub diagnostics: Vec<reclaim_core::recognition::Diagnostic>,
+    pub diagnostics_truncated: bool,
+}
+
 struct Session {
     generation: u32,
     scope: Scope,
@@ -563,6 +577,58 @@ pub async fn scan_cancel<R: Runtime>(
     state.cancel(generation)
 }
 
+#[tauri::command]
+pub async fn recognition_page<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, Arc<ScanService>>,
+    generation: u32,
+    offset: usize,
+    limit: usize,
+) -> BoundaryResult<RecognitionPage> {
+    authorize(&window)?;
+    state.recognition_page(generation, offset, limit)
+}
+
+impl ScanService {
+    pub fn recognition_page(
+        &self,
+        generation: u32,
+        offset: usize,
+        limit: usize,
+    ) -> BoundaryResult<RecognitionPage> {
+        if limit == 0 || limit > scan::MAX_PAGE {
+            return Err(ErrorCode::InvalidRequest.into());
+        }
+        let mut authority = lock(&self.authority);
+        let session = authority.session(generation)?;
+        throttle(session)?;
+        let data = lock(&session.data);
+        if data.progress.status == Status::Running {
+            return Err(ErrorCode::Busy.into());
+        }
+        let report = &data.recognition;
+        if offset > report.findings.len() {
+            return Err(ErrorCode::InvalidRequest.into());
+        }
+        let end = offset.saturating_add(limit).min(report.findings.len());
+        Ok(RecognitionPage {
+            generation,
+            finished: report.finished,
+            cancelled: report.cancelled,
+            limited: report.limited,
+            offset,
+            next_offset: (end < report.findings.len()).then_some(end),
+            findings: report.findings[offset..end].to_vec(),
+            diagnostics: if offset == 0 {
+                report.diagnostics.clone()
+            } else {
+                Vec::new()
+            },
+            diagnostics_truncated: report.diagnostics_truncated,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -847,6 +913,115 @@ mod tests {
         );
     }
 
+    #[test]
+    fn exclusions_preserve_recognition_and_shared_session_authority() {
+        let (temporary, service, mut scope) = fixture();
+        fs::write(
+            temporary.path().join("package.json"),
+            r#"{"name":"synthetic-project"}"#,
+        )
+        .unwrap();
+        fs::create_dir(temporary.path().join("node_modules")).unwrap();
+        fs::write(
+            temporary.path().join("node_modules/.package-lock.json"),
+            r#"{"lockfileVersion":3,"packages":{}}"#,
+        )
+        .unwrap();
+        fs::create_dir(temporary.path().join("cache")).unwrap();
+        fs::write(
+            temporary.path().join("cache/unvisited"),
+            b"excluded fixture",
+        )
+        .unwrap();
+        scope.exclusions = vec![Exclusion {
+            relative_path: "cache".into(),
+            subtree: true,
+        }];
+        lock(&service.authority).scope = Some(scope.clone());
+        let started = service.start(&scope.id).unwrap();
+        let progress = terminal(&service);
+        assert_eq!(progress.status, Status::Partial);
+        assert_eq!(
+            progress.current_location.as_deref(),
+            Some(scope.roots[0].display_path.as_str())
+        );
+        service
+            .with_terminal_scan(started.generation, |data| {
+                assert!(data.recognition.finished);
+                assert!(data.records.iter().any(|record| record.name == "cache"
+                    && record.finding.issue == Some(Issue::Excluded)));
+                assert!(!data.records.iter().any(|record| record.name == "unvisited"));
+            })
+            .unwrap();
+        let recognized = service
+            .recognition_page(started.generation, 0, scan::MAX_PAGE)
+            .unwrap();
+        assert!(recognized.finished);
+        assert!(!recognized.findings.is_empty());
+        assert!(recognized.findings.iter().all(|artifact| artifact
+            .finding_id
+            .starts_with(&format!("{}:", started.generation))));
+        assert_eq!(
+            fs::read(temporary.path().join("cache/unvisited")).unwrap(),
+            b"excluded fixture"
+        );
+    }
+
+    #[test]
+    fn recognition_pages_share_scan_authority_and_reject_invalid_requests() {
+        let (temporary, service, scope) = fixture();
+        fs::write(
+            temporary.path().join("package.json"),
+            r#"{"name":"synthetic-project"}"#,
+        )
+        .unwrap();
+        let started = service.start(&scope.id).unwrap();
+        terminal(&service);
+        assert_eq!(
+            service
+                .recognition_page(started.generation, 0, 0)
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::InvalidRequest
+        );
+        let page = service.recognition_page(started.generation, 0, 1).unwrap();
+        assert!(page.finished);
+        assert!(!page.cancelled);
+        assert_eq!(page.findings.len(), 1);
+        assert_eq!(
+            page.findings[0].cleanup_support,
+            reclaim_core::recognition::CleanupSupport::InspectionOnly
+        );
+        assert_eq!(
+            page.findings[0].owned_logical_bytes.as_ref().unwrap(),
+            &terminal(&service).logical_bytes.to_string()
+        );
+        assert_eq!(
+            service.status(started.generation).unwrap_err().code,
+            ErrorCode::RateLimited
+        );
+        lock(&service.authority).session.as_mut().unwrap().last_read = None;
+        assert_eq!(
+            service
+                .recognition_page(started.generation, 100, 1)
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::InvalidRequest
+        );
+        service.start(&scope.id).unwrap();
+        assert_eq!(
+            service
+                .recognition_page(started.generation, 0, 1)
+                .err()
+                .unwrap()
+                .code,
+            ErrorCode::StaleGeneration
+        );
+        terminal(&service);
+    }
+
     fn ipc(
         window: &WebviewWindow<MockRuntime>,
         command: &str,
@@ -880,7 +1055,8 @@ mod tests {
                 scan_status,
                 scan_page,
                 scan_cancel,
-                scan_register_scope
+                scan_register_scope,
+                recognition_page
             ])
             .build(context)
             .unwrap();
@@ -905,6 +1081,22 @@ mod tests {
             .build()
             .unwrap();
         assert!(ipc(&other, "scan_cancel", json!({"generation": generation})).is_err());
+        assert!(ipc(
+            &other,
+            "recognition_page",
+            json!({"generation": generation, "offset": 0, "limit": 200})
+        )
+        .is_err());
+        lock(&service.authority).session.as_mut().unwrap().last_read = None;
+        let recognized = ipc(
+            &window,
+            "recognition_page",
+            json!({"generation": generation, "offset": 0, "limit": 200}),
+        )
+        .unwrap();
+        assert_eq!(recognized["finished"], true);
+        assert_eq!(recognized["findings"], json!([]));
+
         assert!(app.state::<Arc<ScanService>>().cancel(u32::MAX).is_err());
     }
 }

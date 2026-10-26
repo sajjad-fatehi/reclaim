@@ -121,6 +121,7 @@ pub struct Finding {
 }
 
 /// Native names remain lossless, never round-tripped through display strings.
+#[derive(Clone)]
 pub struct Record {
     pub finding: Finding,
     pub name: OsString,
@@ -148,6 +149,7 @@ pub struct Progress {
 pub struct ScanData {
     pub progress: Progress,
     pub records: Vec<Record>,
+    pub recognition: crate::recognition::Recognition,
 }
 
 impl ScanData {
@@ -167,6 +169,7 @@ impl ScanData {
                 allocated_bytes: 0,
             },
             records: Vec::new(),
+            recognition: crate::recognition::Recognition::default(),
         }
     }
 
@@ -415,7 +418,13 @@ impl Scanner {
                 }
             }
         }
+        let snapshot = {
+            let data = lock(&self.data);
+            (data.progress.generation, data.records.clone())
+        };
+        let recognition = crate::recognition::recognize(snapshot.0, &snapshot.1, &self.cancel);
         let mut data = lock(&self.data);
+        data.recognition = recognition;
         let cancelled = self.cancel.load(Ordering::Relaxed);
         data.progress.status = if cancelled {
             Status::Cancelled
