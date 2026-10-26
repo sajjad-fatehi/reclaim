@@ -52,3 +52,8 @@ Trackable examples: `Cargo.lock`, `package-lock.json`, `src/App.tsx`, `src-tauri
 Resolved setup failures: Tauri requires `icons/icon.png` even when the bundle icon list is empty, so a plain teal placeholder icon is included. Tauri Cargo arguments require the `-- --locked` separator. Vitest 4 optional browser peer metadata caused npm's `Cannot read properties of null (reading 'edgesOut')`; compatible stable Vitest 5.0.5 installs cleanly without overrides or extra browser dependencies.
 
 Limits: no hosted CI, macOS 11 hardware, Intel, Windows/Linux, VoiceOver session, 200% native text enlargement or native light-mode render verified. System light/dark styling uses established CSS media queries, semantic text and no motion. No supported distribution/signing release is claimed. Core intentionally has no domain API or artificial test.
+
+
+This document records the historical metadata-only scaffold delivery. The subsequent
+[scan foundation](features/scan-foundation.md) extends native permissions and behavior;
+consult its delivered contract for the current read-only producer.

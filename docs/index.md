@@ -1,6 +1,6 @@
 # Documentation
 
-Reclaim has an early desktop scaffold. Product and design documents describe planned capabilities; local development guidance describes the implementation.
+Reclaim has an early desktop scaffold and a read-only native scan producer. Product and design documents describe planned capabilities; local development guidance describes the implementation.
 
 - [Product context](../PRODUCT.md): confirmed users, purpose and constraints.
 - [Product direction](product.md): planned behavior, delivery stages and open decisions.

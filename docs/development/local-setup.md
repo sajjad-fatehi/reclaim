@@ -25,7 +25,7 @@ npm run check
 npm run format
 ```
 
-`check` runs Prettier, rustfmt, ESLint, strict TypeScript, focused frontend tests and workspace Clippy. Individual commands are `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` and `npm run check:rust`. Formatting targets application source/configuration and Rust files, not existing product/design documents, generated outputs or lockfiles. There is no core behavior requiring Rust unit tests yet.
+`check` runs Prettier, rustfmt, ESLint, strict TypeScript, focused frontend/Rust tests and workspace Clippy. Individual commands are `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:rust` and `npm run check:rust`. Formatting targets application source/configuration and Rust files, not existing product/design documents, generated outputs or lockfiles. Run `cargo test --workspace --locked` for scanner, authority and IPC fixture tests.
 
 ## Local production build
 
@@ -38,11 +38,26 @@ Build uses locked Rust dependencies, compiles local frontend assets and bundles 
 
 ## Ownership and security
 
-- `crates/reclaim-core`: dependency-free, Tauri-independent domain crate, intentionally empty until real domain behavior exists.
-- `src-tauri`: native lifecycle/configuration; metadata uses built-in Tauri facilities, no custom command or artificial core interface.
+- `crates/reclaim-core`: Tauri-independent metadata traversal, identity, accounting and coverage rules.
+- `src-tauri`: native lifecycle/configuration, folder selection, process-local scope authority and bounded scanner IPC. App metadata still uses built-in Tauri facilities.
 - `src`: React presentation and native connection state. One stylesheet holds current theme roles.
 - Root Cargo workspace and lockfile own Rust resolution; npm lockfile owns frontend resolution.
 
-Only name/version permissions are granted to the local `main` window. Production CSP allows bundled scripts/styles/images and native IPC, with no remote content or external network access. Development CSP additionally allows Vite's local HMR transport and injected styles/preamble. No filesystem, shell, scanner, cleanup, helper or telemetry capability exists.
+Name/version and the narrow `scan-read-only` permission are granted only to the local `main` window. Production CSP allows bundled scripts/styles/images and native IPC, with no remote content or external network access. Development CSP additionally allows Vite's local HMR transport and injected styles/preamble. No generic filesystem, shell, cleanup, privileged helper or telemetry capability exists. The native dialog plugin is used from Rust only; its frontend dialog/filesystem permissions are not granted. No scan starts at launch. See [scanner contract](../specs/features/scan-foundation.md) for scope grants, resource limits and coverage semantics.
 
-See [scaffold specification and verification](../specs/desktop-scaffold.md) for acceptance evidence and limits. Planned product/design documents remain future behavior, not scaffold capabilities.
+See [scaffold specification and verification](../specs/desktop-scaffold.md) for acceptance evidence and limits. Unimplemented product/design capabilities remain planned; the scanner contract above describes the delivered native producer.
+
+## Disposable native scanner smoke
+
+```sh
+npm run build:web
+cargo run -p reclaim-desktop --example scan_smoke --features tauri/custom-protocol --locked
+```
+
+This example creates and removes its own synthetic fixtures, drives real macOS
+WebView IPC through the production handlers and ACL, then exits with success or
+failure. It never discovers or scans user locations. Set
+`RECLAIM_SMOKE_KEEP_OPEN=1` to retain its labelled result window for a screenshot;
+close the window afterward to release the disposable fixture. This is a development
+example, not an application mode or production endpoint. Native folder selection
+still requires a user gesture in a consuming UI; cancellation returns `null`.
