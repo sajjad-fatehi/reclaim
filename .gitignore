@@ -1,0 +1,14 @@
+/target/
+/node_modules/
+/dist/
+/src-tauri/gen/schemas/
+*.log
+.DS_Store
+._*
+.env
+.env.*
+!.env.example
+!.env.*.example
+/.Codex/worktrees/
+/.codex/worktrees/
+/.claude/worktrees/
