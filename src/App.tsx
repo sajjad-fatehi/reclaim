@@ -1,6 +1,7 @@
 import { getName, getVersion } from '@tauri-apps/api/app';
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { AppShell } from './shell/AppShell';
 
 export function App(): ReactElement {
   const [connectionStatus, setConnectionStatus] = useState(
@@ -30,25 +31,5 @@ export function App(): ReactElement {
     };
   }, []);
 
-  return (
-    <main>
-      <header>
-        <p className="eyebrow">Early development</p>
-        <h1>Reclaim</h1>
-      </header>
-      <section aria-labelledby="scaffold-heading">
-        <h2 id="scaffold-heading">
-          A foundation for understanding disk space.
-        </h2>
-        <p>
-          This is an early development scaffold. Storage scanning and cleanup
-          are not available yet.
-        </p>
-        <p>No files are scanned or changed.</p>
-      </section>
-      <footer>
-        <p role="status">{connectionStatus}</p>
-      </footer>
-    </main>
-  );
+  return <AppShell connectionStatus={connectionStatus} />;
 }
