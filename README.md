@@ -5,10 +5,11 @@ help developers and people using coding tools connect storage consumption to
 projects and tools, understand removal consequences, and make informed reclamation
 decisions.
 
-**Current status: early desktop scaffold only.** The app displays its name, version
-and desktop connection state. It does not scan files, measure storage, recognize
-artifacts or clean anything. Read-only exploration, artifact recognition and
-limited cleanup are future work; deletion and recovery policies are not finalized.
+**Current status: desktop scaffold with a read-only native scan producer.** The
+current UI displays app metadata and connection state. Rust implements explicitly
+scoped traversal, accounting, cancellation and bounded IPC; consuming scan screens,
+artifact recognition and cleanup remain future work. Nothing scans automatically.
+See [scanner contract](docs/specs/features/scan-foundation.md).
 
 Reclaim is macOS-first, built with Rust, Tauri 2, React, TypeScript and Vite.
 Windows and Linux are future targets. There is no supported downloadable release.
@@ -45,7 +46,7 @@ npm run build
 open target/release/bundle/macos/Reclaim.app
 ```
 
-`check` runs formatting checks, ESLint, strict TypeScript, frontend tests and Rust
+`check` runs formatting checks, ESLint, strict TypeScript, frontend/Rust tests and Rust
 Clippy. `format` writes formatting edits. `build` creates a locally ad-hoc-signed
 macOS app, without notarization; it is not a public distribution artifact.
 See [local development](docs/development/local-setup.md) for authoritative setup
@@ -58,7 +59,7 @@ and platform limits.
 | --- | --- |
 | `src/` | React presentation and native connection state |
 | `src-tauri/` | Native lifecycle, configuration and permissions |
-| `crates/reclaim-core/` | Tauri-independent Rust domain core, currently empty |
+| `crates/reclaim-core/` | Tauri-independent read-only traversal, accounting and coverage |
 | `docs/` | Product direction, design proposals, specifications and development guidance |
 | `Cargo.toml`, `Cargo.lock` | Rust workspace and locked dependency resolution |
 | `package.json`, `package-lock.json` | Frontend scripts and locked dependency resolution |
