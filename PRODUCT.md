@@ -30,7 +30,7 @@ Users investigate storage pressure and broad operating-system storage categories
 
 ## Capabilities and Constraints
 
-- Planned sections: Overview, Explore, Development, and Review & Clean. Minimal settings cover scan locations, exclusions and permissions.
+- Implemented shell destinations: Overview, Explore, Development, and Review & Clean, with Settings. Their scan and cleanup UI remains unimplemented; appearance settings work locally. The native read-only scan producer is implemented independently of these views.
 - Development has related project and tool views; shared usage must not be counted twice.
 - On first use, show suggested scan locations for review and editing. Scanning starts only after the user explicitly starts it.
 - Show scan coverage, inaccessible locations and unknown usage; never portray partial coverage as complete.
@@ -40,7 +40,7 @@ Users investigate storage pressure and broad operating-system storage categories
 - Initial sequence: read-only exploration, a small evidence-driven set of recognizers, then limited explainable cleanup.
 - Duplicate detection, app uninstalling, RAM cleaning and automatic cleanup are deferred.
 - Product copy and repository documentation are English only initially.
-- Current design request is documentation only: no prototype, scanner or cleanup implementation.
+- Application implementation is authorized. The desktop shell, appearance, navigation, shared presentation primitives and native read-only scan producer are implemented. Scan UI/session orchestration and cleanup remain separate feature tasks.
 
 ## Brand Commitments
 
@@ -52,7 +52,7 @@ The user's latest visual brief replaces the former Space Layers aesthetic: warm,
 
 ## Evidence on Hand
 
-The repository initially contains only its MIT license. Existing local reference script: `~/bin/reclaim`, a macOS development-artifact cleanup script outside this repository. Its commands are not an approved deletion policy. Product decisions are recorded in shared project notes. No measured product scan results or shipped interface exist yet.
+The repository began with its MIT license and now includes a Rust/Tauri/React scaffold and working desktop shell. Existing local reference script: `~/bin/reclaim`, a macOS development-artifact cleanup script outside this repository. Its commands are not an approved deletion policy. Product decisions are recorded in shared project notes. Shell acceptance and native evidence are recorded in [the shell specification](docs/specs/features/application-shell.md). The [scan foundation](docs/specs/features/scan-foundation.md) records implemented native scope grants, bounded read-only measurement, cancellation, transport and isolated fixture evidence; it is not yet connected to production scan views. No user-data scan results are claimed.
 
 ## Product Principles
 
@@ -64,4 +64,4 @@ The repository initially contains only its MIT license. Existing local reference
 
 ## Open Decisions
 
-The latest warm CleanMyMac-inspired direction supersedes the earlier Space Layers aesthetic. Design specifications live in [docs/design/index.md](docs/design/index.md). Exact visual execution is being implemented and reviewed. Planned capabilities are not claims about what the current scaffold already supports.
+The latest warm CleanMyMac-inspired direction supersedes the earlier Space Layers aesthetic. Design specifications live in [docs/design/index.md](docs/design/index.md). The built shell system is recorded in [DESIGN.md](DESIGN.md), with acceptance and explicit evidence limits in the shell specification. Planned scan UI and cleanup capabilities are not claims about the current shell; the implemented native producer has its own verified contract.

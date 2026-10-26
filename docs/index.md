@@ -1,13 +1,15 @@
 # Documentation
 
-Reclaim has an early desktop scaffold and a read-only native scan producer. Product and design documents describe planned capabilities; local development guidance describes the implementation.
+Reclaim has a working desktop shell, appearance controls and a read-only native scan producer. Product and feature specifications distinguish these implementations from pending scan UI/session orchestration and cleanup.
 
 - [Product context](../PRODUCT.md): confirmed users, purpose and constraints.
 - [Product direction](product.md): planned behavior, delivery stages and open decisions.
 - [Design specification](design/index.md): approved direction, information architecture, flows, layouts and proposed design tokens.
+- [Built visual system](../DESIGN.md): actual shell tokens, components and reuse guidance.
 - [Development workflow](development/workflow.md): specification-driven delivery, architecture boundaries, safety and verification.
 - [Local development](development/local-setup.md): requirements, installation, checks, local build and code ownership.
 - [Desktop scaffold](specs/desktop-scaffold.md): scope, safety and verification evidence.
+- [Read-only scan foundation](specs/features/scan-foundation.md): implemented native authority, measurement, transport and fixture evidence.
 - [Specification template](specs/template.md): lightweight behavior and acceptance record.
 - [Application feature specifications](specs/features/index.md): complete approved feature scope, dependency contracts and delivery acceptance.
 - [Coding-agent rules](../AGENTS.md): concise repository-wide entry point.

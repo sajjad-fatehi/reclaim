@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { getName, getVersion } from '@tauri-apps/api/app';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { App } from './App';
 
 vi.mock('@tauri-apps/api/app', () => ({
@@ -8,7 +8,19 @@ vi.mock('@tauri-apps/api/app', () => ({
   getVersion: vi.fn(),
 }));
 
+beforeEach((): void => {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+});
+
 afterEach((): void => {
+  vi.unstubAllGlobals();
   cleanup();
   vi.resetAllMocks();
 });
