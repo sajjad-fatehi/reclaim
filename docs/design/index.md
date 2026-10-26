@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-Documentation only. No prototype or application UI is implemented by this work.
+These specifications govern implementation. The working desktop shell's actual tokens and components are recorded in [the built design system](../../DESIGN.md); feature states remain planned until their owning specifications have passing evidence.
 
 Confirmed by the user:
 
@@ -31,6 +31,7 @@ Assumed usage scene: someone investigating storage pressure on a laptop in ordin
 - [Proposed design system](design-system.md)
 - [Icons and motion](icons-and-motion.md)
 - [Warm visual direction and verified references](warm-reference.md)
+- [Built shell design system](../../DESIGN.md)
 
 ## Method and anti-slop rules
 

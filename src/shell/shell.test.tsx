@@ -95,7 +95,10 @@ test('navigation retains mounted view inputs and scroll containers, with honest 
   const view = input.closest('section');
   if (!view) throw new Error('Missing view');
   view.scrollTop = 150;
+  fireEvent.scroll(view);
   fireEvent.click(screen.getByRole('button', { name: 'Development' }));
+  // WebKit clears scroll offsets when an ancestor becomes display:none.
+  view.scrollTop = 0;
   expect(screen.queryByRole('searchbox')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Explore' }));
   expect(screen.getByRole('searchbox')).toBe(input);

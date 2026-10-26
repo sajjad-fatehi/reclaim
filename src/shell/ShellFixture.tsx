@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { AppShell } from './AppShell';
 import { Dialog, Inspector, Notice, ResultTable, Toolbar } from './primitives';
@@ -8,9 +8,20 @@ export function ShellFixture(): ReactElement {
   const [selected, setSelected] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    function updateMotionPreference(): void {
+      setReducedMotion(query.matches);
+    }
+    query.addEventListener('change', updateMotionPreference);
+    return () => query.removeEventListener('change', updateMotionPreference);
+  }, []);
   return (
     <AppShell
-      connectionStatus="Synthetic shell fixture · No files accessed"
+      connectionStatus={`Synthetic shell fixture · No files accessed · Reduced motion ${reducedMotion ? 'on' : 'off'}`}
       views={{
         explore: (
           <>

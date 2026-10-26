@@ -7,11 +7,13 @@ import { GearSix } from '@phosphor-icons/react/GearSix';
 import { Monitor } from '@phosphor-icons/react/Monitor';
 import { Moon } from '@phosphor-icons/react/Moon';
 import { Sun } from '@phosphor-icons/react/Sun';
-import { useRef, useState } from 'react';
+import { ArrowRight } from '@phosphor-icons/react/ArrowRight';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { useAppearance } from './appearance';
 import { usePanelMotion } from './motion';
 import { EmptyState, Notice } from './primitives';
+import folderIllustration from '../../assets/illustrations/reclaim-folder.webp';
 
 const destinations = [
   {
@@ -72,6 +74,20 @@ function ViewSlot({
   children: ReactNode;
 }): ReactElement {
   const reference = useRef<HTMLElement>(null);
+  const scrollPositions = useRef(
+    new Map<HTMLElement, { top: number; left: number }>(),
+  );
+  useLayoutEffect(() => {
+    if (!active) return;
+    scrollPositions.current.forEach((position, element) => {
+      if (!element.isConnected) {
+        scrollPositions.current.delete(element);
+        return;
+      }
+      element.scrollTop = position.top;
+      element.scrollLeft = position.left;
+    });
+  }, [active]);
   usePanelMotion(reference, active);
   return (
     <section
@@ -79,6 +95,13 @@ function ViewSlot({
       className="view"
       hidden={!active}
       aria-label={title}
+      onScrollCapture={(event) => {
+        if (!active || !(event.target instanceof HTMLElement)) return;
+        scrollPositions.current.set(event.target, {
+          top: event.target.scrollTop,
+          left: event.target.scrollLeft,
+        });
+      }}
     >
       {children}
     </section>
@@ -93,6 +116,34 @@ export function AppShell({
   const [destination, setDestination] = useState<Destination>('overview');
   const { preference, persistenceError, changeAppearance } = useAppearance();
   const mainReference = useRef<HTMLElement>(null);
+  const navigationReference = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    const navigation = navigationReference.current;
+    if (!navigation) return;
+    function alignIndicator(): void {
+      const selected = navigation?.querySelector<HTMLButtonElement>(
+        '[aria-current="page"]',
+      );
+      if (!selected) return;
+      navigation?.style.setProperty(
+        '--indicator-top',
+        `${selected.offsetTop}px`,
+      );
+      navigation?.style.setProperty(
+        '--indicator-height',
+        `${selected.offsetHeight}px`,
+      );
+    }
+    alignIndicator();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(alignIndicator);
+    observer.observe(navigation);
+    navigation
+      .querySelectorAll('button')
+      .forEach((button) => observer.observe(button));
+    return () => observer.disconnect();
+  }, [destination]);
 
   return (
     <div className="app-shell" data-destination={destination}>
@@ -105,10 +156,12 @@ export function AppShell({
       </a>
       <aside className="navigation-rail" aria-label="Application sidebar">
         <div className="brand">
-          <HardDrives size={24} aria-hidden="true" />
+          <span className="brand-symbol">
+            <HardDrives size={24} aria-hidden="true" />
+          </span>
           <span>Reclaim</span>
         </div>
-        <nav aria-label="Main navigation">
+        <nav ref={navigationReference} aria-label="Main navigation">
           <div className="navigation-indicator" aria-hidden="true" />
           {destinations.map(({ id, label, icon: Icon }) => (
             <button
@@ -119,11 +172,13 @@ export function AppShell({
               aria-controls={`view-${id}`}
               onClick={() => setDestination(id)}
             >
-              <Icon
-                size={20}
-                weight={destination === id ? 'fill' : 'regular'}
-                aria-hidden="true"
-              />
+              <span className="navigation-icon">
+                <Icon
+                  size={20}
+                  weight={destination === id ? 'fill' : 'regular'}
+                  aria-hidden="true"
+                />
+              </span>
               <span>{label}</span>
             </button>
           ))}
@@ -215,9 +270,33 @@ export function AppShell({
                 ) : (
                   (views[id] ?? (
                     <>
-                      <EmptyState icon={<Icon size={40} />} title={title}>
-                        <p>{description}</p>
-                      </EmptyState>
+                      <div
+                        className={`section-introduction introduction-${id}`}
+                      >
+                        <EmptyState icon={<Icon size={28} />} title={title}>
+                          <p>{description}</p>
+                          {id === 'overview' && (
+                            <button
+                              type="button"
+                              className="primary-action"
+                              onClick={() => setDestination('settings')}
+                            >
+                              Personalize appearance{' '}
+                              <ArrowRight size={18} aria-hidden="true" />
+                            </button>
+                          )}
+                        </EmptyState>
+                        {id === 'overview' && (
+                          <img
+                            className="folder-illustration"
+                            src={folderIllustration}
+                            width={1200}
+                            height={1200}
+                            alt=""
+                            aria-hidden="true"
+                          />
+                        )}
+                      </div>
                       <Notice>No files are scanned or changed.</Notice>
                     </>
                   ))

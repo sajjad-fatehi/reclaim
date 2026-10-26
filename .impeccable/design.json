@@ -1,0 +1,607 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T21:45:46.132576+00:00",
+  "title": "Design System: Reclaim",
+  "extensions": {
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas",
+        "tonalRamp": [
+          "oklch(15% 0.0091 330.95)",
+          "oklch(26.43% 0.0091 330.95)",
+          "oklch(37.86% 0.0091 330.95)",
+          "oklch(49.29% 0.0091 330.95)",
+          "oklch(60.71% 0.0091 330.95)",
+          "oklch(72.14% 0.0091 330.95)",
+          "oklch(83.57% 0.0091 330.95)",
+          "oklch(95% 0.0091 330.95)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(15% 0.0025 48.72)",
+          "oklch(26.43% 0.0025 48.72)",
+          "oklch(37.86% 0.0025 48.72)",
+          "oklch(49.29% 0.0025 48.72)",
+          "oklch(60.71% 0.0025 48.72)",
+          "oklch(72.14% 0.0025 48.72)",
+          "oklch(83.57% 0.0025 48.72)",
+          "oklch(95% 0.0025 48.72)"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised",
+        "tonalRamp": [
+          "oklch(15% 0.0194 328.28)",
+          "oklch(26.43% 0.0194 328.28)",
+          "oklch(37.86% 0.0194 328.28)",
+          "oklch(49.29% 0.0194 328.28)",
+          "oklch(60.71% 0.0194 328.28)",
+          "oklch(72.14% 0.0194 328.28)",
+          "oklch(83.57% 0.0194 328.28)",
+          "oklch(95% 0.0194 328.28)"
+        ]
+      },
+      "navigation": {
+        "role": "neutral",
+        "displayName": "Navigation",
+        "tonalRamp": [
+          "oklch(15% 0.0565 317.39)",
+          "oklch(26.43% 0.0565 317.39)",
+          "oklch(37.86% 0.0565 317.39)",
+          "oklch(49.29% 0.0565 317.39)",
+          "oklch(60.71% 0.0565 317.39)",
+          "oklch(72.14% 0.0565 317.39)",
+          "oklch(83.57% 0.0565 317.39)",
+          "oklch(95% 0.0565 317.39)"
+        ]
+      },
+      "navigation-text": {
+        "role": "neutral",
+        "displayName": "Navigation Text",
+        "tonalRamp": [
+          "oklch(15% 0.0166 331.59)",
+          "oklch(26.43% 0.0166 331.59)",
+          "oklch(37.86% 0.0166 331.59)",
+          "oklch(49.29% 0.0166 331.59)",
+          "oklch(60.71% 0.0166 331.59)",
+          "oklch(72.14% 0.0166 331.59)",
+          "oklch(83.57% 0.0166 331.59)",
+          "oklch(95% 0.0166 331.59)"
+        ]
+      },
+      "navigation-selection": {
+        "role": "neutral",
+        "displayName": "Navigation Selection",
+        "tonalRamp": [
+          "oklch(15% 0.0731 324.86)",
+          "oklch(26.43% 0.0731 324.86)",
+          "oklch(37.86% 0.0731 324.86)",
+          "oklch(49.29% 0.0731 324.86)",
+          "oklch(60.71% 0.0731 324.86)",
+          "oklch(72.14% 0.0731 324.86)",
+          "oklch(83.57% 0.0731 324.86)",
+          "oklch(95% 0.0731 324.86)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "tonalRamp": [
+          "oklch(15% 0.0477 314.00)",
+          "oklch(26.43% 0.0477 314.00)",
+          "oklch(37.86% 0.0477 314.00)",
+          "oklch(49.29% 0.0477 314.00)",
+          "oklch(60.71% 0.0477 314.00)",
+          "oklch(72.14% 0.0477 314.00)",
+          "oklch(83.57% 0.0477 314.00)",
+          "oklch(95% 0.0477 314.00)"
+        ]
+      },
+      "secondary": {
+        "role": "neutral",
+        "displayName": "Secondary",
+        "tonalRamp": [
+          "oklch(15% 0.0559 320.69)",
+          "oklch(26.43% 0.0559 320.69)",
+          "oklch(37.86% 0.0559 320.69)",
+          "oklch(49.29% 0.0559 320.69)",
+          "oklch(60.71% 0.0559 320.69)",
+          "oklch(72.14% 0.0559 320.69)",
+          "oklch(83.57% 0.0559 320.69)",
+          "oklch(95% 0.0559 320.69)"
+        ]
+      },
+      "divider": {
+        "role": "neutral",
+        "displayName": "Divider",
+        "tonalRamp": [
+          "oklch(15% 0.0370 323.09)",
+          "oklch(26.43% 0.0370 323.09)",
+          "oklch(37.86% 0.0370 323.09)",
+          "oklch(49.29% 0.0370 323.09)",
+          "oklch(60.71% 0.0370 323.09)",
+          "oklch(72.14% 0.0370 323.09)",
+          "oklch(83.57% 0.0370 323.09)",
+          "oklch(95% 0.0370 323.09)"
+        ]
+      },
+      "boundary": {
+        "role": "neutral",
+        "displayName": "Boundary",
+        "tonalRamp": [
+          "oklch(15% 0.0744 323.17)",
+          "oklch(26.43% 0.0744 323.17)",
+          "oklch(37.86% 0.0744 323.17)",
+          "oklch(49.29% 0.0744 323.17)",
+          "oklch(60.71% 0.0744 323.17)",
+          "oklch(72.14% 0.0744 323.17)",
+          "oklch(83.57% 0.0744 323.17)",
+          "oklch(95% 0.0744 323.17)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Accent",
+        "tonalRamp": [
+          "oklch(15% 0.1195 351.86)",
+          "oklch(26.43% 0.1195 351.86)",
+          "oklch(37.86% 0.1195 351.86)",
+          "oklch(49.29% 0.1195 351.86)",
+          "oklch(60.71% 0.1195 351.86)",
+          "oklch(72.14% 0.1195 351.86)",
+          "oklch(83.57% 0.1195 351.86)",
+          "oklch(95% 0.1195 351.86)"
+        ]
+      },
+      "on-accent": {
+        "role": "primary",
+        "displayName": "On Accent",
+        "tonalRamp": [
+          "oklch(15% 0.0025 48.72)",
+          "oklch(26.43% 0.0025 48.72)",
+          "oklch(37.86% 0.0025 48.72)",
+          "oklch(49.29% 0.0025 48.72)",
+          "oklch(60.71% 0.0025 48.72)",
+          "oklch(72.14% 0.0025 48.72)",
+          "oklch(83.57% 0.0025 48.72)",
+          "oklch(95% 0.0025 48.72)"
+        ]
+      },
+      "selection": {
+        "role": "primary",
+        "displayName": "Selection",
+        "tonalRamp": [
+          "oklch(15% 0.0390 341.85)",
+          "oklch(26.43% 0.0390 341.85)",
+          "oklch(37.86% 0.0390 341.85)",
+          "oklch(49.29% 0.0390 341.85)",
+          "oklch(60.71% 0.0390 341.85)",
+          "oklch(72.14% 0.0390 341.85)",
+          "oklch(83.57% 0.0390 341.85)",
+          "oklch(95% 0.0390 341.85)"
+        ]
+      },
+      "selection-text": {
+        "role": "primary",
+        "displayName": "Selection Text",
+        "tonalRamp": [
+          "oklch(15% 0.0862 348.40)",
+          "oklch(26.43% 0.0862 348.40)",
+          "oklch(37.86% 0.0862 348.40)",
+          "oklch(49.29% 0.0862 348.40)",
+          "oklch(60.71% 0.0862 348.40)",
+          "oklch(72.14% 0.0862 348.40)",
+          "oklch(83.57% 0.0862 348.40)",
+          "oklch(95% 0.0862 348.40)"
+        ]
+      },
+      "navigation-deep": {
+        "role": "neutral",
+        "displayName": "Navigation Deep",
+        "tonalRamp": [
+          "oklch(15% 0.0517 314.25)",
+          "oklch(26.43% 0.0517 314.25)",
+          "oklch(37.86% 0.0517 314.25)",
+          "oklch(49.29% 0.0517 314.25)",
+          "oklch(60.71% 0.0517 314.25)",
+          "oklch(72.14% 0.0517 314.25)",
+          "oklch(83.57% 0.0517 314.25)",
+          "oklch(95% 0.0517 314.25)"
+        ]
+      },
+      "navigation-accent": {
+        "role": "neutral",
+        "displayName": "Navigation Accent",
+        "tonalRamp": [
+          "oklch(15% 0.0643 42.47)",
+          "oklch(26.43% 0.0643 42.47)",
+          "oklch(37.86% 0.0643 42.47)",
+          "oklch(49.29% 0.0643 42.47)",
+          "oklch(60.71% 0.0643 42.47)",
+          "oklch(72.14% 0.0643 42.47)",
+          "oklch(83.57% 0.0643 42.47)",
+          "oklch(95% 0.0643 42.47)"
+        ]
+      },
+      "canvas-dark": {
+        "role": "neutral",
+        "displayName": "Canvas Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0343 314.93)",
+          "oklch(26.43% 0.0343 314.93)",
+          "oklch(37.86% 0.0343 314.93)",
+          "oklch(49.29% 0.0343 314.93)",
+          "oklch(60.71% 0.0343 314.93)",
+          "oklch(72.14% 0.0343 314.93)",
+          "oklch(83.57% 0.0343 314.93)",
+          "oklch(95% 0.0343 314.93)"
+        ]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Surface Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0415 317.49)",
+          "oklch(26.43% 0.0415 317.49)",
+          "oklch(37.86% 0.0415 317.49)",
+          "oklch(49.29% 0.0415 317.49)",
+          "oklch(60.71% 0.0415 317.49)",
+          "oklch(72.14% 0.0415 317.49)",
+          "oklch(83.57% 0.0415 317.49)",
+          "oklch(95% 0.0415 317.49)"
+        ]
+      },
+      "raised-dark": {
+        "role": "neutral",
+        "displayName": "Raised Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0453 320.15)",
+          "oklch(26.43% 0.0453 320.15)",
+          "oklch(37.86% 0.0453 320.15)",
+          "oklch(49.29% 0.0453 320.15)",
+          "oklch(60.71% 0.0453 320.15)",
+          "oklch(72.14% 0.0453 320.15)",
+          "oklch(83.57% 0.0453 320.15)",
+          "oklch(95% 0.0453 320.15)"
+        ]
+      },
+      "navigation-dark": {
+        "role": "neutral",
+        "displayName": "Navigation Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0456 314.52)",
+          "oklch(26.43% 0.0456 314.52)",
+          "oklch(37.86% 0.0456 314.52)",
+          "oklch(49.29% 0.0456 314.52)",
+          "oklch(60.71% 0.0456 314.52)",
+          "oklch(72.14% 0.0456 314.52)",
+          "oklch(83.57% 0.0456 314.52)",
+          "oklch(95% 0.0456 314.52)"
+        ]
+      },
+      "navigation-selection-dark": {
+        "role": "neutral",
+        "displayName": "Navigation Selection Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0731 324.86)",
+          "oklch(26.43% 0.0731 324.86)",
+          "oklch(37.86% 0.0731 324.86)",
+          "oklch(49.29% 0.0731 324.86)",
+          "oklch(60.71% 0.0731 324.86)",
+          "oklch(72.14% 0.0731 324.86)",
+          "oklch(83.57% 0.0731 324.86)",
+          "oklch(95% 0.0731 324.86)"
+        ]
+      },
+      "text-dark": {
+        "role": "neutral",
+        "displayName": "Text Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0166 331.59)",
+          "oklch(26.43% 0.0166 331.59)",
+          "oklch(37.86% 0.0166 331.59)",
+          "oklch(49.29% 0.0166 331.59)",
+          "oklch(60.71% 0.0166 331.59)",
+          "oklch(72.14% 0.0166 331.59)",
+          "oklch(83.57% 0.0166 331.59)",
+          "oklch(95% 0.0166 331.59)"
+        ]
+      },
+      "secondary-dark": {
+        "role": "neutral",
+        "displayName": "Secondary Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0465 327.13)",
+          "oklch(26.43% 0.0465 327.13)",
+          "oklch(37.86% 0.0465 327.13)",
+          "oklch(49.29% 0.0465 327.13)",
+          "oklch(60.71% 0.0465 327.13)",
+          "oklch(72.14% 0.0465 327.13)",
+          "oklch(83.57% 0.0465 327.13)",
+          "oklch(95% 0.0465 327.13)"
+        ]
+      },
+      "divider-dark": {
+        "role": "neutral",
+        "displayName": "Divider Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0661 323.58)",
+          "oklch(26.43% 0.0661 323.58)",
+          "oklch(37.86% 0.0661 323.58)",
+          "oklch(49.29% 0.0661 323.58)",
+          "oklch(60.71% 0.0661 323.58)",
+          "oklch(72.14% 0.0661 323.58)",
+          "oklch(83.57% 0.0661 323.58)",
+          "oklch(95% 0.0661 323.58)"
+        ]
+      },
+      "boundary-dark": {
+        "role": "neutral",
+        "displayName": "Boundary Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0693 323.79)",
+          "oklch(26.43% 0.0693 323.79)",
+          "oklch(37.86% 0.0693 323.79)",
+          "oklch(49.29% 0.0693 323.79)",
+          "oklch(60.71% 0.0693 323.79)",
+          "oklch(72.14% 0.0693 323.79)",
+          "oklch(83.57% 0.0693 323.79)",
+          "oklch(95% 0.0693 323.79)"
+        ]
+      },
+      "accent-dark": {
+        "role": "primary",
+        "displayName": "Accent Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0875 40.77)",
+          "oklch(26.43% 0.0875 40.77)",
+          "oklch(37.86% 0.0875 40.77)",
+          "oklch(49.29% 0.0875 40.77)",
+          "oklch(60.71% 0.0875 40.77)",
+          "oklch(72.14% 0.0875 40.77)",
+          "oklch(83.57% 0.0875 40.77)",
+          "oklch(95% 0.0875 40.77)"
+        ]
+      },
+      "on-accent-dark": {
+        "role": "primary",
+        "displayName": "On Accent Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0603 333.34)",
+          "oklch(26.43% 0.0603 333.34)",
+          "oklch(37.86% 0.0603 333.34)",
+          "oklch(49.29% 0.0603 333.34)",
+          "oklch(60.71% 0.0603 333.34)",
+          "oklch(72.14% 0.0603 333.34)",
+          "oklch(83.57% 0.0603 333.34)",
+          "oklch(95% 0.0603 333.34)"
+        ]
+      },
+      "selection-dark": {
+        "role": "primary",
+        "displayName": "Selection Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0585 341.06)",
+          "oklch(26.43% 0.0585 341.06)",
+          "oklch(37.86% 0.0585 341.06)",
+          "oklch(49.29% 0.0585 341.06)",
+          "oklch(60.71% 0.0585 341.06)",
+          "oklch(72.14% 0.0585 341.06)",
+          "oklch(83.57% 0.0585 341.06)",
+          "oklch(95% 0.0585 341.06)"
+        ]
+      },
+      "selection-text-dark": {
+        "role": "primary",
+        "displayName": "Selection Text Dark",
+        "tonalRamp": [
+          "oklch(15% 0.0338 352.03)",
+          "oklch(26.43% 0.0338 352.03)",
+          "oklch(37.86% 0.0338 352.03)",
+          "oklch(49.29% 0.0338 352.03)",
+          "oklch(60.71% 0.0338 352.03)",
+          "oklch(72.14% 0.0338 352.03)",
+          "oklch(83.57% 0.0338 352.03)",
+          "oklch(95% 0.0338 352.03)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Contextual headline",
+        "purpose": "Contextual empty-state heading using the approved platform system face."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-panel",
+        "value": "0 16px 48px #4a233312",
+        "purpose": "Light task surfaces and panels."
+      },
+      {
+        "name": "shadow-panel-dark",
+        "value": "0 16px 48px #130b1c33",
+        "purpose": "Dark task surfaces and panels."
+      },
+      {
+        "name": "shadow-control",
+        "value": "0 3px 8px #3d203022",
+        "purpose": "Light compact controls and icon holders."
+      },
+      {
+        "name": "shadow-control-dark",
+        "value": "0 3px 8px #130b1c44",
+        "purpose": "Dark compact controls and icon holders."
+      }
+    ],
+    "motion": [
+      {
+        "name": "duration-feedback",
+        "value": "120ms",
+        "purpose": "Button feedback."
+      },
+      {
+        "name": "duration-selection",
+        "value": "200ms",
+        "purpose": "Selection and view entrance."
+      },
+      {
+        "name": "duration-panel",
+        "value": "260ms",
+        "purpose": "Inspector or dialog entrance."
+      },
+      {
+        "name": "duration-artwork",
+        "value": "300ms",
+        "purpose": "Original folder entrance."
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Selection, panel and artwork settling."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "workspace-insets-and-modal-inspector",
+        "value": "1100px"
+      },
+      {
+        "name": "introduction-padding-and-headline",
+        "value": "1000px"
+      },
+      {
+        "name": "compact-settings",
+        "value": "760px"
+      },
+      {
+        "name": "compact-shell-insets",
+        "value": "600px"
+      },
+      {
+        "name": "overview-art-content-container",
+        "value": "38rem"
+      }
+    ],
+    "gradients": [
+      {
+        "name": "feature-background",
+        "value": "linear-gradient(\n    120deg,\n    #fffdfc 10%,\n    #f5e9fa 65%,\n    #ffe7d8\n  )",
+        "purpose": "Warm contextual or brand/rail atmosphere."
+      },
+      {
+        "name": "brand-background",
+        "value": "linear-gradient(145deg, #f6d6ff, #ffb99a)",
+        "purpose": "Warm contextual or brand/rail atmosphere."
+      },
+      {
+        "name": "feature-background-dark",
+        "value": "linear-gradient(\n    120deg,\n    #36233c 10%,\n    #49304c 65%,\n    #593d44\n  )",
+        "purpose": "Warm contextual or brand/rail atmosphere."
+      }
+    ],
+    "previewPolicy": "Tonal ramps are synthesized OKLCH panel previews at fixed hue/chroma; they are not runtime tokens or approved extra palette steps. Alpha scrim/icon colors have no synthesized ramp. The 38rem breakpoint is a content-container query, not a viewport media query."
+  },
+  "components": [
+    {
+      "name": "Default button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Boundary-led neutral action.",
+      "html": "<button class=\"ds-button\">Inspect item</button>",
+      "css": ".ds-button{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;font-size:0.875rem;min-height:40px;min-width:40px;border:1px solid var(--boundary);border-radius:var(--radius-control);background:var(--surface);color:var(--text);padding:0.5rem 0.75rem;cursor:pointer;transition:background-color var(--duration-feedback),color var(--duration-feedback),transform var(--duration-feedback);}.ds-button:hover{background:var(--raised)}.ds-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px;}.ds-button:active{transform:scale(.96)}.ds-button:disabled{opacity:.65;cursor:default;transform:none}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}.ds-button:active{transform:none}}"
+    },
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Warm next action, theme-paired foreground.",
+      "html": "<button class=\"ds-primary\">Personalize appearance <svg width=\"18\" height=\"18\" viewBox=\"0 0 256 256\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"16\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M40 128h176m-72-72 72 72-72 72\"/></svg></button>",
+      "css": ".ds-primary{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;font-size:0.875rem;min-height:40px;min-width:40px;border:1px solid var(--boundary);border-radius:var(--radius-control);background:var(--surface);color:var(--text);padding:0.5rem 0.75rem;cursor:pointer;transition:background-color var(--duration-feedback),color var(--duration-feedback),transform var(--duration-feedback);display:inline-flex;align-items:center;gap:var(--space-small);background:var(--accent);color:var(--on-accent);border-color:transparent;border-radius:12px;box-shadow:var(--shadow-control);font-weight:500;text-align:left}.ds-primary:hover{filter:brightness(1.08)}.ds-primary:focus-visible{outline:2px solid var(--accent);outline-offset:3px;}.ds-primary:active{transform:scale(.96)}.ds-primary:disabled{opacity:.65;cursor:default;transform:none}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}.ds-primary:active{transform:none}}"
+    },
+    {
+      "name": "Search field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "Readable bounded search field.",
+      "html": "<input class=\"ds-search\" type=\"search\" aria-label=\"Search items\" placeholder=\"Search items\">",
+      "css": ".ds-search{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;font-size:0.875rem;width:min(100%,18rem);min-height:40px;border:1px solid var(--boundary);border-radius:var(--radius-control);background:var(--surface);color:var(--text);padding:.5rem;caret-color:var(--accent)}.ds-search:focus-visible{outline:2px solid var(--accent);outline-offset:3px;}"
+    },
+    {
+      "name": "Navigation item",
+      "kind": "nav",
+      "refersTo": "navigation-item",
+      "description": "Persistent labelled navigation with current-state backplate.",
+      "html": "<nav class=\"ds-navigation\" aria-label=\"Example navigation\"><button class=\"ds-destination\" aria-current=\"page\">Overview</button><button class=\"ds-destination\">Explore</button></nav>",
+      "css": ".ds-navigation{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;font-size:0.875rem;padding:8px;background:linear-gradient(165deg,var(--navigation),var(--navigation-deep));color:var(--navigation-text);display:flex;flex-direction:column;gap:4px}.ds-destination{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;font-size:0.875rem;color:inherit;background:transparent;border:0;border-radius:12px;min-height:max(52px,calc(1.5em + 20px));padding:10px 12px;text-align:left;cursor:pointer}.ds-destination[aria-current]{background:var(--navigation-selection);font-weight:600;box-shadow:var(--shadow-control)}.ds-destination:hover{background:var(--navigation-selection)}.ds-destination:focus-visible{outline:2px solid var(--navigation-text);outline-offset:-3px}"
+    },
+    {
+      "name": "Notice",
+      "kind": "card",
+      "refersTo": "notice",
+      "description": "Quiet information adjacent to a task.",
+      "html": "<div class=\"ds-notice\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 256 256\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"16\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"128\" cy=\"128\" r=\"96\"/><path d=\"M128 120v56m0-96v4\"/></svg><span>No files are scanned or changed.</span></div>",
+      "css": ".ds-notice{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;font-size:0.875rem;display:flex;align-items:flex-start;gap:.75rem;padding:var(--space-medium);color:var(--secondary);background:var(--surface);border-radius:12px}.ds-notice svg{flex-shrink:0;margin-top:.0625rem}"
+    },
+    {
+      "name": "Settings container",
+      "kind": "card",
+      "refersTo": "settings-card",
+      "description": "Soft task grouping, not a row treatment.",
+      "html": "<section class=\"ds-settings\"><h2>Appearance</h2><p>Choose how Reclaim looks on this Mac.</p></section>",
+      "css": ".ds-settings{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;font-size:0.875rem;max-width:48rem;padding:var(--space-section);border-radius:var(--radius-panel);background:var(--surface);color:var(--text);box-shadow:var(--shadow-panel)}.ds-settings h2{margin:0;font-size:1.25rem;font-weight:600}.ds-settings p{margin:var(--space-small) 0 0;color:var(--secondary)}@media(max-width:760px){.ds-settings{padding:var(--space-large)}}"
+    },
+    {
+      "name": "Appearance choice",
+      "kind": "custom",
+      "refersTo": "appearance-choice",
+      "description": "Real radio control inside a selected warm wrapper.",
+      "html": "<label class=\"ds-choice\"><input type=\"radio\" name=\"ds-appearance\" checked><span>System</span></label>",
+      "css": ".ds-choice{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;font-size:0.875rem;display:inline-flex;gap:var(--space-small);align-items:center;min-height:2.75rem;min-width:8rem;border:1px solid var(--boundary);background:var(--surface);color:var(--text);border-radius:12px;padding:1rem;cursor:pointer;transition:background-color var(--duration-selection),color var(--duration-selection)}.ds-choice:has(input:checked){background:var(--selection);color:var(--selection-text);border-color:var(--accent)}.ds-choice:hover{background:var(--raised)}.ds-choice input{width:1rem;height:1rem;margin:0;accent-color:var(--accent)}.ds-choice input:focus-visible{outline:2px solid var(--accent);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-choice{transition:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Warm desktop investigation",
+    "overview": "Warm plum navigation, lilac and peach atmosphere, creamy surfaces and a local sculptural folder make storage investigation approachable. Soft task framing surrounds readable controls and comparable rows; decoration yields to content when space is scarce.\n\nThis is a post-build record of the direct user-pinned warm desktop direction, superseding Space Layers. Runtime values belong to `src/shell/tokens.css`; this document records them, not a second runtime theme. The confirmed visual authority is [the warm reference packet](docs/design/warm-reference.md), with surface composition in [the shell contract](.impeccable/surfaces/application-shell.md).",
+    "keyCharacteristics": [
+      "Plum rail with persistent text labels.",
+      "Warm light and dark surfaces with restrained soft depth.",
+      "One original decorative object; crisp inspection rows.",
+      "Content-first compact and enlarged-text reflow."
+    ],
+    "rules": [
+      {
+        "name": "The Warm Frame Rule",
+        "body": "Use expressive gradients and depth for task framing; preserve crisp comparable rows for inspection.",
+        "section": "colors"
+      },
+      {
+        "name": "The Paired Theme Rule",
+        "body": "Change semantic colors together through the runtime theme; dark appearance remains warm plum.",
+        "section": "colors"
+      },
+      {
+        "name": "The Quiet Depth Rule",
+        "body": "Use soft panel and control shadows to group and lift surfaces; keep result rows flat.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do reuse semantic runtime tokens and test both appearance modes.",
+      "Do preserve text labels, visible focus, native form semantics and independent content scrolling.",
+      "Do keep the original folder art local, decorative, proportional and optional at constrained widths.",
+      "Do retain crisp table rows, selected-state contrast and tabular numerals."
+    ],
+    "donts": [
+      "Don't ship competitor screenshots, symbols or branding as product assets.",
+      "Don't fabricate scan metrics or use celebratory deletion motion.",
+      "Don't turn each filename into a decorative card or let art block the action.",
+      "Don't remove gradients, rounded surfaces or dimensional art merely to satisfy the superseded Space Layers direction."
+    ]
+  }
+}
