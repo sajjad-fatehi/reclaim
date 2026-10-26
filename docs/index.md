@@ -1,10 +1,12 @@
 # Documentation
 
-Reclaim is in planning. These documents describe intended behavior, not implemented capabilities.
+Reclaim has an early desktop scaffold. Product and design documents describe planned capabilities; local development guidance describes the implementation.
 
 - [Product context](../PRODUCT.md): confirmed users, purpose and constraints.
 - [Design specification](design/index.md): approved direction, information architecture, flows, layouts and proposed design tokens.
 - [Development workflow](development/workflow.md): specification-driven delivery, architecture boundaries, safety and verification.
+- [Local development](development/local-setup.md): requirements, installation, checks, local build and code ownership.
+- [Desktop scaffold](specs/desktop-scaffold.md): scope, safety and verification evidence.
 - [Specification template](specs/template.md): lightweight behavior and acceptance record.
 - [Coding-agent rules](../AGENTS.md): concise repository-wide entry point.
 
@@ -15,4 +17,4 @@ Reclaim is in planning. These documents describe intended behavior, not implemen
 - Keep one authoritative source per topic. Update it when behavior, contracts, safety constraints or setup steps change; link to it rather than copying its rules.
 - Use descriptive filenames and relative links. Link new documents here or through a topic entry point linked here; check links after moving or renaming documents.
 
-Application setup, contribution guidance and a fuller product specification remain separate board tasks. Their documents are not available yet. The product task owns the future `docs/product.md`; add its navigation link when it exists. The onboarding task owns root `README.md` and `CONTRIBUTING.md`; link this index from those entry points when they exist. These are integration destinations, not existing files.
+Application setup lives in local development guidance above. Contribution guidance remains a separate board task. The onboarding task owns root `README.md` and `CONTRIBUTING.md`; link this index from those entry points when they exist.
