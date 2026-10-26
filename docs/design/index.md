@@ -63,7 +63,7 @@ Direction reference: `seed:7aa891e52a1d6f6a`. This records the design session, n
 
 ## Delivery and open decisions
 
-No DESIGN.md or executable token package is generated now. A future implementation records the system actually built in DESIGN.md after rendered review, rather than treating this proposed palette as proven.
+The working shell's rendered system is recorded in [DESIGN.md](../../DESIGN.md), with runtime tokens in `src/shell/tokens.css` and native evidence in [the shell specification](../specs/features/application-shell.md). The [read-only native scan producer](../specs/features/scan-foundation.md) is implemented independently; its production scan views and later cleanup remain pending. Proposed feature layouts are not claims of implemented scan UI.
 
 Still open: recognizer priorities; measurement feasibility; actual memory/performance budgets; supported macOS versions; component library choice; final minimum window dimensions; usability evidence. Do not invent a technical guarantee to complete a mockup.
 

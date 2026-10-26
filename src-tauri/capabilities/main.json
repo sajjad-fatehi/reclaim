@@ -1,7 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-metadata",
-  "description": "Only the local main window can read application name and version.",
+  "description": "Only the local main window can read metadata and explicitly authorize read-only scan sessions.",
   "windows": ["main"],
-  "permissions": ["core:app:allow-name", "core:app:allow-version"]
+  "permissions": [
+    "core:app:allow-name",
+    "core:app:allow-version",
+    "scan-read-only"
+  ]
 }

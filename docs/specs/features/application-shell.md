@@ -22,7 +22,6 @@ Replace the scaffold-only composition with the working desktop shell and reusabl
 - Capture and inspect light/dark desktop and compact/text-enlarged views; validate focus/dialog/reduced-motion behavior. Use focused tests for preference/navigation behavior and required checks.
 - Apply ui-ux-pro-max, impeccable Operate guidance, engineering-skills:senior-frontend and make-interfaces-feel-better. Keep review bounded; honor the user's new warm, modern, playful/fantastical reference and icon/motion commitments. Record the built visual system through impeccable's applicable documentation workflow; do not overwrite product truth or retain the superseded cold aesthetic.
 
-
 ## Implementation acceptance record
 
 The shell implementation uses mounted, independently scrollable view slots for the five destinations. Navigation is local presentation state; consumers own their domain/session state. A dedicated `reclaim.appearance` localStorage key accepts only `system`, `light`, or `dark`; missing, malformed or inaccessible storage falls back to System without touching other keys. Failed writes keep the selected appearance for this session and show a useful notice. System changes remain live.
@@ -50,3 +49,9 @@ Native decorated titlebar remains outside web content. Shared native-semantic pr
 - Native development WebView evidence is not notarized release or older-macOS/Intel verification. No scanner, cleanup, domain session or real result data is implemented by this shell task.
 
 - Finish review matched the pinned warm direction, validated every required capture and identified no material visual deficiency. Stale PRODUCT status was corrected. Formal disposition remains **fix** solely for missing corroborated concept-roll seed; manager explicitly accepted this process limit under request `204476c4-a502-432a-b60d-a83b0edeeb5f`. Direct packet authority is recorded honestly; no superseded/fabricated seed or new tournament is used. See [actual review verdict](../../../.impeccable/review/verdict.md), [native capture matrix](../../../.impeccable/review/README.md) and [built system](../../../DESIGN.md).
+
+## Integration with the native scan producer
+
+Integrated with `origin/dev` at `a1de80755354b02f4962322050f261ef30312506`. The [read-only scan foundation](scan-foundation.md) now exists natively: explicit scope grants, bounded read-only measurement, cancellation and narrow IPC are implemented. The shell still owns no scanner/session state, calls no scan commands on launch and keeps its unconnected scan views honest. Scan UI and shared session orchestration remain the Overview feature's responsibility; cleanup is unimplemented.
+
+The evidence above records the standalone shell checkpoint; it does not claim scanner capabilities are absent from the integrated application. Native grants/capabilities and scanner package scripts are preserved unchanged from dev, including `test:rust` and `check` invoking Rust tests. The shell's Phosphor dependency remains present. Integration resolution changes documentation only; prior shell/native proofs remain reusable, and hosted CI owns integrated full checks/build.

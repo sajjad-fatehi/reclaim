@@ -13,7 +13,7 @@ Specification-driven development means recording requirements and acceptance bef
 
 ## Ownership and boundaries
 
-The approved stack is Rust, Tauri 2, React, TypeScript and Vite, initially targeting macOS. The current application is a metadata-only desktop scaffold. The following boundaries govern future behavior; see [local development](local-setup.md) for existing directories and commands.
+The approved stack is Rust, Tauri 2, React, TypeScript and Vite, initially targeting macOS. The current UI is a metadata scaffold; the native layer also provides the [read-only scan producer](../specs/features/scan-foundation.md). The following boundaries govern future behavior; see [local development](local-setup.md) for existing directories and commands.
 
 - **Rust domain core:** Own domain rules and accounting invariants independently of the UI and Tauri adapter. Keep core logic testable without a WebView or Tauri runtime.
 - **Tauri adapter:** Own transport, application wiring and permission enforcement. Expose only operations the task requires. Validate frontend input, paths and authorization at the privileged boundary; frontend checks cannot grant filesystem access. Return useful failures without exposing private data unnecessarily.

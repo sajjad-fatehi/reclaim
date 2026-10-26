@@ -1,3 +1,3 @@
-//! Tauri-independent home for future Reclaim domain rules.
-//!
-//! The scaffold has no domain behavior yet. Application metadata belongs to Tauri.
+//! Read-only filesystem measurement, independent of Tauri and presentation.
+
+pub mod scan;
