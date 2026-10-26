@@ -304,3 +304,12 @@ Repair evidence:
 - `cargo clippy -p reclaim-desktop --lib --tests --locked -- -D warnings` passed.
 - Existing release-build and native WebView IPC evidence above is reused; neither
   was rerun for this native authority repair.
+
+## Overview consumer extension
+
+The [Overview contract](overview-and-scope.md#native-configuration-and-exclusion-extension)
+adds bounded native preferences, reviewable saved candidates, frozen literal scope
+exclusions, `Issue::Excluded` and `Progress.currentLocation`. Existing scan command
+callers remain compatible; omitted exclusions mean none. This extends the same
+scanner and native scope registry, not a second producer. Persisted paths cannot
+start scans; explicit registration and native identity validation remain required.

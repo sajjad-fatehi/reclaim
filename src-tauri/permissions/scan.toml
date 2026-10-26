@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "scan-read-only"
 description = "Allow explicit native scope selection and bounded read-only scan sessions."
-commands.allow = ["scan_locations", "scan_pick_folder", "scan_register_scope", "scan_start", "scan_current", "scan_status", "scan_page", "scan_cancel"]
+commands.allow = ["preferences_load", "preferences_save", "scan_locations", "scan_pick_folder", "scan_register_scope", "scan_start", "scan_current", "scan_status", "scan_page", "scan_cancel"]

@@ -1,7 +1,8 @@
 import { getName, getVersion } from '@tauri-apps/api/app';
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { AppShell } from './shell/AppShell';
+import { ScanProvider } from './scan/context';
+import { ScanApplication } from './scan/ScanApplication';
 
 export function App(): ReactElement {
   const [connectionStatus, setConnectionStatus] = useState(
@@ -31,5 +32,9 @@ export function App(): ReactElement {
     };
   }, []);
 
-  return <AppShell connectionStatus={connectionStatus} />;
+  return (
+    <ScanProvider>
+      <ScanApplication connectionStatus={connectionStatus} />
+    </ScanProvider>
+  );
 }

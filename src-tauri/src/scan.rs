@@ -1,6 +1,8 @@
 //! Process-local authority and bounded transport. Never accepts frontend paths.
 
-use reclaim_core::scan::{self, lock, Finding, Issue, Progress, Root, ScanData, Status, Volume};
+use reclaim_core::scan::{
+    self, lock, Exclusion, Finding, Issue, Progress, Root, ScanData, Status, Volume,
+};
 use serde::Serialize;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -68,6 +70,7 @@ struct Candidate {
 pub struct Scope {
     pub id: String,
     pub roots: Vec<Location>,
+    pub exclusions: Vec<Exclusion>,
 }
 
 #[derive(Serialize)]
@@ -181,7 +184,11 @@ impl Authority {
                 roots.push(candidate.location.clone());
             }
         }
-        let scope = Scope { id: token(), roots };
+        let scope = Scope {
+            id: token(),
+            roots,
+            exclusions: Vec::new(),
+        };
         self.scope = Some(scope.clone());
         Ok(scope)
     }
@@ -254,6 +261,15 @@ impl ScanService {
         Ok(inspect(&data))
     }
 
+    pub fn location_path(&self, id: &str) -> BoundaryResult<std::path::PathBuf> {
+        lock(&self.authority)
+            .candidates
+            .iter()
+            .find(|candidate| candidate.location.id == id)
+            .map(|candidate| candidate.root.path.clone())
+            .ok_or_else(|| ErrorCode::InvalidScope.into())
+    }
+
     pub fn start(&self, scope_id: &str) -> BoundaryResult<Progress> {
         let mut authority = lock(&self.authority);
         authority.ensure_idle()?;
@@ -286,6 +302,15 @@ impl ScanService {
             }
             roots.push(candidate.root.try_clone()?);
         }
+        let exclusions = roots
+            .iter()
+            .flat_map(|root| {
+                scope
+                    .exclusions
+                    .iter()
+                    .map(|exclusion| (root.path.join(&exclusion.relative_path), exclusion.subtree))
+            })
+            .collect();
         authority.generation = authority
             .generation
             .checked_add(1)
@@ -306,7 +331,7 @@ impl ScanService {
             .name("reclaim-scan".into())
             .spawn(move || {
                 if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    scan::scan(roots, data, cancel)
+                    scan::scan_excluding(roots, exclusions, data, cancel)
                 }))
                 .is_err()
                 {
@@ -384,7 +409,7 @@ fn throttle(session: &mut Session) -> BoundaryResult<()> {
     Ok(())
 }
 
-fn authorize<R: Runtime>(window: &WebviewWindow<R>) -> BoundaryResult<()> {
+pub(crate) fn authorize<R: Runtime>(window: &WebviewWindow<R>) -> BoundaryResult<()> {
     if window.label() != "main" {
         return Err(ErrorCode::AccessDenied.into());
     }
@@ -452,9 +477,18 @@ pub async fn scan_register_scope<R: Runtime>(
     window: WebviewWindow<R>,
     state: State<'_, Arc<ScanService>>,
     location_ids: Vec<String>,
+    exclusions: Option<Vec<Exclusion>>,
 ) -> BoundaryResult<Scope> {
     authorize(&window)?;
-    lock(&state.authority).register(&location_ids)
+    let exclusions = exclusions.unwrap_or_default();
+    if exclusions.len() > 64 || !exclusions.iter().all(Exclusion::validate) {
+        return Err(ErrorCode::InvalidRequest.into());
+    }
+    let mut authority = lock(&state.authority);
+    let mut scope = authority.register(&location_ids)?;
+    scope.exclusions = exclusions;
+    authority.scope = Some(scope.clone());
+    Ok(scope)
 }
 
 #[tauri::command]
