@@ -4,7 +4,7 @@
 
 ## Intent and status
 
-The user wants a visually engaging interface with icons, animations, transitions and motion. This is an explicit design preference. The proposed choreography below makes Space Layers feel responsive and authored; it is not implemented or performance-tested yet.
+The user wants a visually engaging interface with icons, animations, transitions and motion, and now explicitly pins a warm, modern, playful/fantastical CleanMyMac-inspired world. Follow [the visual packet](warm-reference.md). Motion and original dimensional artwork should make the app feel authored and welcoming; the proposed choreography is not yet performance-verified.
 
 Motion should acknowledge actions, explain relationships and add character. A professional operational tool can feel lively without making inspection slower or using deletion as a celebration.
 
@@ -18,6 +18,7 @@ Motion should acknowledge actions, explain relationships and add character. A pr
 - Status icons must represent actual state. A checkmark means an operation succeeded, not that a finding is safe to delete.
 - Meaningful icon-only controls have accessible names and tooltips; decorative icons are hidden from assistive technology. Emoji are not structural icons.
 - Use verified official assets for tool brands only when needed; generic artifact icons are preferable to invented logos.
+- Pair the coherent small vector icon system with original larger 3D-style illustration in first-run, overview and meaningful empty states. Reference competitors for craft, never ship their artwork or use a large image in place of readable controls. One polished original folder/storage illustration is supplied in the reference packet.
 
 ## Motion vocabulary
 

@@ -2,40 +2,40 @@
 
 [Design index](index.md)
 
-Status: proposed semantic values for Space Layers. Not an implemented or fully accessibility-tested system. Use system appearance initially; both themes have equal status.
+Status: proposed starting values for the user's warm CleanMyMac-inspired direction. These replace the cold Space Layers tokens; the actual implementation may tune them while preserving contrast and the committed reference character. See [reference packet](warm-reference.md). Use system appearance initially; both themes have equal status.
 
 ## Color roles
 
 | Semantic role | Light | Dark |
 | --- | --- | --- |
-| Canvas | `#F3F6F8` | `#111A22` |
-| Surface | `#FFFFFF` | `#182530` |
-| Raised surface | `#EAF0F4` | `#20303D` |
-| Navigation ground | `#182F46` | `#142A3D` |
-| Navigation text | `#F4F8FC` | `#F4F8FC` |
-| Primary text | `#172B3A` | `#EDF3F8` |
-| Secondary text | `#465D70` | `#B6C5D2` |
-| Decorative divider | `#CED8E0` | `#394B5B` |
-| Interactive boundary | `#718497` | `#8197AA` |
-| Action / focus | `#0F766E` | `#66D4C5` |
-| On action | `#FFFFFF` | `#0E2523` |
-| Selection ground | `#D9F0EB` | `#21443F` |
-| Selection text | `#144C46` | `#B5F5E6` |
+| Canvas | `#FBF5FA` | `#211626` |
+| Surface | `#FFFDFC` | `#302135` |
+| Raised surface | `#F3E7F2` | `#3C2A40` |
+| Navigation ground | `#38233F` | `#28192F` |
+| Navigation text | `#FFF4FD` | `#FFF4FD` |
+| Primary text | `#34243C` | `#FFF4FD` |
+| Secondary text | `#705775` | `#D6BBD5` |
+| Decorative divider | `#DDC9DF` | `#6A4B6D` |
+| Interactive boundary | `#98739C` | `#B28EB5` |
+| Action / focus | `#8B3A62` | `#FFBAA1` |
+| On action | `#FFFFFF` | `#3F213A` |
+| Selection ground | `#F3D6E7` | `#59374D` |
+| Selection text | `#66304D` | `#FFE3EE` |
 | Warning text | `#92400E` | `#FEC84B` |
-| Danger text | `#B42318` | `#FDA29B` |
-| Success text | `#18794E` | `#75E0A7` |
+| Danger text | `#A32E40` | `#FFB6BF` |
+| Success text | `#226A4A` | `#8ED5B0` |
 
 Warning, danger and success text above is intended on Surface. Introduce background variants only after checking the exact pair. Decorative dividers are not the sole boundary of controls. Use Interactive boundary when the edge itself carries an affordance.
 
-Proposed data series: projects teal, shared tools blue, personal files violet, unexplained ochre, free space a neutral field. Supply a persistent text legend, accessible names and distinguishable borders/pattern alternatives. Color never implies deletion eligibility. Unknown is not a warning severity by itself.
+Proposed data roles use lilac, peach, berry and complementary cool contrast where necessary for chart differentiation; free space remains a clearly labelled neutral field. Supply a persistent text legend, accessible names and distinguishable borders/pattern alternatives. Color never implies deletion eligibility. Unknown is not a warning severity by itself.
 
-No gradients, glow or translucent glass are required. Depth comes from surface hierarchy, spacing and optional restrained overlays. Do not scatter colored badges simply to make neutral content look designed.
+Use a coherent warm gradient/material language at shell and feature-surface scale, original dimensional artwork and soft controlled shadows/highlights. Translucency is optional and must preserve contrast. Keep dense file tables crisp; do not apply decorative blur or glossy texture behind every cell. Expressive color is intentional, not forbidden by generic anti-slop defaults.
 
 ## Typography and number formatting
 
 - UI family: system sans-serif stack, using the macOS system face through CSS. No remote font request.
 - Path/code fallback: system monospace; do not set the whole interface in monospace.
-- Proposed sizes: 12 px metadata, 13 px table data, 14 px body/control, 16 px subsection, 20 px section, 28 px primary volume figure. Avoid oversized marketing headings.
+- Proposed sizes: 12 px metadata, 13 px table data, 14 px body/control, 16 px subsection, 22 px section, 30–34 px key contextual heading. A friendly generous overview can coexist with precise dense inspection; preserve hierarchy and avoid marketing slogans.
 - Weights: 400 body, 500 controls, 600 headings. Use tabular numerals for comparable sizes and right-align numerical columns.
 - Body line-height 1.5; table/control line-height at least 1.35 with room for scaling.
 - Keep byte values numeric internally. Label displayed units consistently; do not silently compare GB and GiB. Expose exact bytes in item details and identify measurement basis/time.
@@ -43,7 +43,7 @@ No gradients, glow or translucent glass are required. Depth comes from surface h
 ## Geometry
 
 - Spacing scale: 4, 8, 12, 16, 24, 32, 48 px.
-- Radius scale: 4 px controls, 8 px overlays/panels. Avoid rounding every table section into a floating card.
+- Radius scale: 8 px compact controls, 12 px buttons, 18–24 px feature surfaces and overlays. Use tighter table geometry within the warm shell; keep material/rounding systematic rather than making every row a separate card.
 - Borders: 1 px by default; a visible 2 px focus outline with separation from the control.
 - Icons: one vector family, consistent stroke and 16/20 px sizes. Decorative icons are hidden from assistive technology; icon-only controls have names and tooltips.
 - Use 32–36 px practical desktop control heights where feasible. Ensure at least 24 × 24 CSS px pointer targets or suitable spacing; dense controls still need usable hit areas.

@@ -48,6 +48,8 @@ Product name: Reclaim. Open-source project; preserve the existing MIT license an
 
 The user explicitly wants expressive icons, animations, transitions and motion to make the interface engaging. Treat these as part of the product's design quality, alongside readable data and accessible interaction. Detailed choreography remains a design proposal until implemented and reviewed.
 
+The user's latest visual brief replaces the former Space Layers aesthetic: warm, modern, playful/fantastical and polished, with CleanMyMac as a visual-quality reference. Preserve Reclaim's own features, identity, truthful data and safety behavior. See [the verified reference packet](docs/design/warm-reference.md).
+
 ## Evidence on Hand
 
 The repository initially contains only its MIT license. Existing local reference script: `~/bin/reclaim`, a macOS development-artifact cleanup script outside this repository. Its commands are not an approved deletion policy. Product decisions are recorded in shared project notes. No measured product scan results or shipped interface exist yet.
@@ -62,4 +64,4 @@ The repository initially contains only its MIT license. Existing local reference
 
 ## Open Decisions
 
-The user selected the Space Layers visual direction. Proposed design specifications live in [docs/design/index.md](docs/design/index.md). Initial recognizer priorities and technical feasibility of individual integrations remain unsettled. Planned capabilities are not claims about the current scaffold.
+The latest warm CleanMyMac-inspired direction supersedes the earlier Space Layers aesthetic. Design specifications live in [docs/design/index.md](docs/design/index.md). Exact visual execution is being implemented and reviewed. Planned capabilities are not claims about what the current scaffold already supports.
