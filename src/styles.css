@@ -883,3 +883,80 @@ input[type='checkbox'] {
 .inspector-content button {
   white-space: normal;
 }
+
+.development-intro {
+  display: flex;
+  align-items: center;
+  gap: var(--space-medium);
+  padding: var(--space-large);
+  background: var(--feature-background);
+  border-radius: var(--radius-panel);
+}
+.development-intro > svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.development-intro h2,
+.development-intro p {
+  margin: 0;
+}
+.development-tabs {
+  display: flex;
+  gap: var(--space-small);
+}
+.development-tabs button {
+  display: inline-flex;
+  gap: var(--space-small);
+  align-items: center;
+}
+.development-tabs [aria-selected='true'] {
+  background: var(--selection);
+  color: var(--selection-text);
+  border-color: var(--accent);
+}
+.development-results {
+  display: grid;
+  gap: var(--space-medium);
+  min-width: 0;
+}
+.development-results .toolbar label {
+  display: grid;
+  gap: var(--space-small);
+}
+.development-results select {
+  min-height: 40px;
+  max-width: 100%;
+  padding: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--boundary);
+  border-radius: var(--radius-control);
+  font: inherit;
+}
+.development-results select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.development-group {
+  background: var(--raised);
+  color: var(--secondary);
+}
+.development-detail {
+  padding: var(--space-large);
+  background: var(--surface);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+  overflow-wrap: anywhere;
+}
+.development-detail > h3:first-child {
+  margin-top: 0;
+}
+.development-detail li {
+  margin-block: var(--space-small);
+}
+.development-detail .row-actions {
+  flex-wrap: wrap;
+}
+.development-layout .row-actions {
+  flex-wrap: wrap;
+}

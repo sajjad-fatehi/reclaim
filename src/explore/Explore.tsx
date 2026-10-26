@@ -34,7 +34,9 @@ const initialView: ViewState = {
 export function Explore({
   api,
   onOverview,
+  active = true,
 }: {
+  active?: boolean;
   api?: InspectionApi | undefined;
   onOverview: () => void;
 }): ReactElement {
@@ -55,6 +57,7 @@ export function Explore({
   return (
     <ExploreSnapshot
       key={state.snapshot.progress.generation}
+      active={active}
       snapshot={state.snapshot}
       stale={state.stale}
       api={api}
@@ -64,11 +67,13 @@ export function Explore({
 }
 function ExploreSnapshot({
   snapshot,
+  active,
   stale,
   api,
   onOverview,
 }: {
   snapshot: ScanSnapshot;
+  active: boolean;
   stale: boolean;
   api?: InspectionApi | undefined;
   onOverview: () => void;
@@ -77,7 +82,9 @@ function ExploreSnapshot({
   const [directories, setDirectories] = useState<Map<string, string | null>>(
     () => new Map(),
   );
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selections, setSelections] = useState<Map<string, string | null>>(
+    () => new Map(),
+  );
   const [notice, setNotice] = useState('');
   const [views, setViews] = useState<Map<string, ViewState>>(() => new Map());
   const region = useRef<HTMLDivElement>(null);
@@ -91,6 +98,19 @@ function ExploreSnapshot({
       ? state.investigation
       : null;
   const investigationKey = investigation?.category ?? 'browse';
+  const selectedId =
+    investigation && 'selectedId' in investigation
+      ? (investigation.selectedId ?? null)
+      : (selections.get(investigationKey) ?? null);
+  function setSelectedId(findingId: string | null): void {
+    if (investigation && 'selectedId' in investigation) {
+      session.investigate({ ...investigation, selectedId: findingId });
+      return;
+    }
+    setSelections((current) =>
+      new Map(current).set(investigationKey, findingId),
+    );
+  }
   const directoryId = directories.get(investigationKey) ?? null;
   const findingIds = useMemo(
     () => (investigation ? new Set(investigation.findingIds) : null),
@@ -229,8 +249,8 @@ function ExploreSnapshot({
         </Toolbar>
         {investigation && (
           <Notice>
-            {investigation.category} · filtered Overview findings. Opening
-            folders retains this filter; Reset filters restores all findings.
+            {investigation.category} · filtered scan findings. Opening folders
+            retains this filter; Reset filters restores all findings.
           </Notice>
         )}
         <p className="secondary">
@@ -359,7 +379,7 @@ function ExploreSnapshot({
         </Toolbar>
       </div>
       <ItemInspector
-        finding={selection}
+        finding={active ? selection : null}
         progress={snapshot.progress}
         stale={stale}
         settled={snapshot.settled}

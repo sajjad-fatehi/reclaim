@@ -34,6 +34,19 @@ async function renderApplication(rootContainer: HTMLElement): Promise<void> {
     );
     return;
   }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(location.search).get('fixture') === 'development'
+  ) {
+    const { DevelopmentFixture } =
+      await import('./development/DevelopmentFixture');
+    createRoot(rootContainer).render(
+      <StrictMode>
+        <DevelopmentFixture />
+      </StrictMode>,
+    );
+    return;
+  }
   createRoot(rootContainer).render(
     <StrictMode>
       <App />
