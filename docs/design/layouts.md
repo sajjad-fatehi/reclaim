@@ -12,9 +12,9 @@ Window toolbar target: 48–56 pixels with adequate macOS titlebar clearance. Da
 
 ## Overview composition
 
-Navigation rail → main area with volume/scan header → full-width usage strip → ranked category rows and investigation suggestions. An inspector occupies the right only after selection. The usage strip is a proportion display with a matching textual list, not a giant decorative disk illustration.
+Navigation rail → main area with volume/scan header → warm introductory/task surface with original dimensional artwork where appropriate → full-width usage strip → ranked category rows and investigation suggestions. An inspector occupies the right only after selection. Artwork adds an inviting focal point but never impersonates measurements or replaces the proportional display and textual list.
 
-The first viewport should expose the selected volume, coverage limits, leading measured consumption and the next investigation action. Avoid four equally prominent metric cards competing with the actual disk accounting.
+The first viewport should expose the selected volume, coverage limits, leading measured consumption and next investigation action. Use the user's warm CleanMyMac-inspired composition and depth without burying disk accounting beneath an oversized promotional hero. Rounded task surfaces are welcome when each has a real distinct job.
 
 ## Explore composition
 
