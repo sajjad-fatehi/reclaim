@@ -1,0 +1,275 @@
+//! Fixed metadata commands only. No generic process, endpoint or shell IPC.
+use reclaim_core::docker::{self, Failure, Inventory};
+use serde::Serialize;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+use tauri::{State, WebviewWindow};
+
+const OUTPUT_LIMIT: u64 = 8 * 1024 * 1024;
+const BUDGET: Duration = Duration::from_secs(20);
+
+#[derive(Default)]
+pub struct DockerService {
+    busy: AtomicBool,
+    cancelled: AtomicBool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Snapshot {
+    pub measured_at_ms: String,
+    pub result: Result<Inventory, Failure>,
+}
+
+trait Transport {
+    fn context(&self) -> Result<Vec<u8>, Failure>;
+    fn get(&self, endpoint: &str, request: Request) -> Result<Vec<u8>, Failure>;
+}
+
+#[derive(Clone, Copy)]
+enum Request<'version> {
+    Version,
+    Usage(&'version str),
+}
+
+struct LocalTransport<'service> {
+    service: &'service DockerService,
+    started: Instant,
+    cli: PathBuf,
+    home: PathBuf,
+}
+
+impl LocalTransport<'_> {
+    fn run(&self, executable: &Path, arguments: &[&str]) -> Result<Vec<u8>, Failure> {
+        self.check()?;
+        let mut command = Command::new(executable);
+        command
+            .args(arguments)
+            .env_clear()
+            .env("HOME", &self.home)
+            .env("PATH", "/usr/bin:/bin")
+            .env("LANG", "C")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let mut child = command.spawn().map_err(|_| Failure::Unavailable)?;
+        let output = child.stdout.take().ok_or(Failure::Unavailable)?;
+        let reader = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            output
+                .take(OUTPUT_LIMIT + 1)
+                .read_to_end(&mut bytes)
+                .map(|_| bytes)
+        });
+        let status = loop {
+            if let Err(failure) = self.check() {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                return Err(failure);
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => break Ok(status),
+                Ok(None) => std::thread::sleep(Duration::from_millis(20)),
+                Err(_) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break Err(Failure::Unavailable);
+                }
+            }
+        };
+        let bytes = reader
+            .join()
+            .map_err(|_| Failure::Unavailable)?
+            .map_err(|_| Failure::Unavailable)?;
+        if bytes.len() as u64 > OUTPUT_LIMIT {
+            return Err(Failure::Limited);
+        }
+        let status = status?;
+        if !status.success() {
+            return Err(match status.code() {
+                Some(28) if executable == Path::new("/usr/bin/curl") => Failure::Timeout,
+                Some(63) if executable == Path::new("/usr/bin/curl") => Failure::Limited,
+                _ => Failure::DaemonUnavailable,
+            });
+        }
+        Ok(bytes)
+    }
+
+    fn check(&self) -> Result<(), Failure> {
+        if self.service.cancelled.load(Ordering::Relaxed) {
+            return Err(Failure::Cancelled);
+        }
+        if self.started.elapsed() >= BUDGET {
+            return Err(Failure::Timeout);
+        }
+        Ok(())
+    }
+}
+
+impl Transport for LocalTransport<'_> {
+    fn context(&self) -> Result<Vec<u8>, Failure> {
+        let version = self.run(&self.cli, &["--version"])?;
+        let version = std::str::from_utf8(&version).map_err(|_| Failure::Malformed)?;
+        let Some(version) = version.strip_prefix("Docker version ") else {
+            return Err(Failure::UnsupportedEngine);
+        };
+        let major = version
+            .split('.')
+            .next()
+            .and_then(|value| value.parse::<u32>().ok())
+            .ok_or(Failure::Malformed)?;
+        if !(24..=29).contains(&major) {
+            return Err(Failure::UnsupportedVersion);
+        }
+        let context = std::env::var("DOCKER_CONTEXT").unwrap_or_default();
+        if !context.is_empty() && context != "default" && context != "desktop-linux" {
+            return Err(Failure::UnsupportedContext);
+        }
+        if std::env::var_os("DOCKER_HOST").is_some() || std::env::var_os("DOCKER_CONFIG").is_some()
+        {
+            return Err(Failure::UnsupportedContext);
+        }
+        let context = if context.is_empty() {
+            self.run(&self.cli, &["context", "show"])?
+        } else {
+            context.into_bytes()
+        };
+        let context = std::str::from_utf8(&context)
+            .map_err(|_| Failure::Malformed)?
+            .trim();
+        if context != "default" && context != "desktop-linux" {
+            return Err(Failure::UnsupportedContext);
+        }
+        self.run(
+            &self.cli,
+            &[
+                "context",
+                "inspect",
+                context,
+                "--format",
+                "{{json .Endpoints.docker.Host}}",
+            ],
+        )
+    }
+
+    fn get(&self, endpoint: &str, request: Request) -> Result<Vec<u8>, Failure> {
+        let socket = endpoint
+            .strip_prefix("unix://")
+            .ok_or(Failure::UnsupportedContext)?;
+        let route = match request {
+            Request::Version => "/version".into(),
+            Request::Usage(version) => format!("/v{version}/system/df"),
+        };
+        self.run(
+            Path::new("/usr/bin/curl"),
+            &[
+                "--disable",
+                "--silent",
+                "--fail",
+                "--noproxy",
+                "*",
+                "--proxy",
+                "",
+                "--connect-timeout",
+                "2",
+                "--max-time",
+                "5",
+                "--max-filesize",
+                "8388608",
+                "--unix-socket",
+                socket,
+                &format!("http://localhost{route}"),
+            ],
+        )
+    }
+}
+
+fn collect(transport: &impl Transport, home: &Path) -> Result<Inventory, Failure> {
+    let endpoint: String =
+        serde_json::from_slice(&transport.context()?).map_err(|_| Failure::Malformed)?;
+    let desktop = format!("unix://{}/.docker/run/docker.sock", home.display());
+    if endpoint != "unix:///var/run/docker.sock" && endpoint != desktop {
+        return Err(Failure::UnsupportedContext);
+    }
+    let version = docker::validate_version(&transport.get(&endpoint, Request::Version)?)?;
+    docker::parse_inventory(&transport.get(&endpoint, Request::Usage(&version))?)
+}
+
+impl DockerService {
+    pub fn inventory(&self) -> Result<Snapshot, Failure> {
+        if self
+            .busy
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return Err(Failure::Busy);
+        }
+        self.cancelled.store(false, Ordering::SeqCst);
+        let result = (|| {
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .ok_or(Failure::Unavailable)?;
+            let cli = [
+                "/usr/local/bin/docker",
+                "/opt/homebrew/bin/docker",
+                "/Applications/Docker.app/Contents/Resources/bin/docker",
+            ]
+            .into_iter()
+            .map(PathBuf::from)
+            .find(|path| path.is_file())
+            .ok_or(Failure::Unavailable)?;
+            collect(
+                &LocalTransport {
+                    service: self,
+                    started: Instant::now(),
+                    cli,
+                    home: home.clone(),
+                },
+                &home,
+            )
+        })();
+        self.busy.store(false, Ordering::SeqCst);
+        let measured_at_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .to_string();
+        Ok(Snapshot {
+            measured_at_ms,
+            result,
+        })
+    }
+}
+
+#[tauri::command]
+pub async fn docker_inventory<Runtime: tauri::Runtime>(
+    window: WebviewWindow<Runtime>,
+    service: State<'_, std::sync::Arc<DockerService>>,
+) -> Result<Snapshot, Failure> {
+    if window.label() != "main" {
+        return Err(Failure::AccessDenied);
+    }
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.inventory())
+        .await
+        .map_err(|_| Failure::Unavailable)?
+}
+
+#[tauri::command]
+pub fn docker_cancel<Runtime: tauri::Runtime>(
+    window: WebviewWindow<Runtime>,
+    service: State<'_, std::sync::Arc<DockerService>>,
+) -> Result<(), Failure> {
+    if window.label() != "main" {
+        return Err(Failure::AccessDenied);
+    }
+    service.cancelled.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

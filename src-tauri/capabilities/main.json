@@ -6,6 +6,7 @@
   "permissions": [
     "core:app:allow-name",
     "core:app:allow-version",
-    "scan-read-only"
+    "scan-read-only",
+    "docker-read-only"
   ]
 }
