@@ -100,6 +100,13 @@ physical recovery. Partial scan/recognition flags qualify every total; cancellat
 can leave incomplete attribution. Worktree Git metadata may belong to the main
 repository even when its linked checkout is elsewhere.
 
+All exclusive and project-owned logical/allocated sums follow the scanner's
+saturating `u64` policy: values cap at `u64::MAX` and serialize as decimal strings.
+`"18446744073709551615"` means **at least** that many measured bytes; the exact
+uncapped sum is unavailable and must not be presented as exact or recoverable space.
+No overflow wraps or panics. A synthetic native-record regression must verify all
+four totals and their serialized cap without allocating corresponding files.
+
 ### Scope, reads and resource limits
 
 The measurement walker remains descriptor-relative and metadata-only. Its new
@@ -207,3 +214,15 @@ explicit temporary-root context. No family requires a real package cache or edit
 installation. No user data, Docker, deletion, prune, hooks or installer launch is
 used by discovery verification. No UI changes or additional WebView smoke run;
 native command behavior is verified with the existing Tauri dispatcher test adapter.
+
+### Review repair: capped recognition totals
+
+Synthetic records reproduce the former unchecked-add panic without filesystem I/O:
+`cargo test -p reclaim-core recognition::tests::account_caps_exclusive_and_owned_byte_totals --locked -- --exact`
+failed before the edit at `recognition.rs:550` (`attempt to add with overflow`).
+After saturating all four sums, the same command passed one regression, asserting
+exclusive and owned logical/allocated decimal caps and zero parent-exclusive bytes.
+`cargo test -p reclaim-core --locked` passed 23 tests;
+`cargo clippy -p reclaim-core --all-targets --locked -- -D warnings`,
+`cargo fmt --all -- --check` and `rtk git diff --check` passed. Unchanged production
+build and native evidence above is reused; no additional UI/native/build run.

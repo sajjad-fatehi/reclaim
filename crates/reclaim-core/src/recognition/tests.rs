@@ -664,3 +664,79 @@ fn malformed_metadata_consumes_read_budget() {
         .iter()
         .any(|diagnostic| diagnostic.reason == "metadata_budget_exhausted"));
 }
+
+#[test]
+fn account_caps_exclusive_and_owned_byte_totals() {
+    fn create_record(
+        index: usize,
+        parent: Option<usize>,
+        kind: Kind,
+        logical: u64,
+        allocated: u64,
+    ) -> Record {
+        Record {
+            name: format!("synthetic-{index}").into(),
+            parent,
+            finding: crate::scan::Finding {
+                id: format!("7:{index}"),
+                parent_id: parent.map(|parent| format!("7:{parent}")),
+                display_name: format!("synthetic-{index}"),
+                kind,
+                logical_bytes: logical,
+                allocated_bytes: allocated,
+                measured_at_ms: 0,
+                modified_at_ms: None,
+                identity: None,
+                alias_of: None,
+                complete: true,
+                issue: None,
+            },
+        }
+    }
+    let records = vec![
+        create_record(0, None, Kind::Directory, u64::MAX, u64::MAX),
+        create_record(1, Some(0), Kind::Directory, u64::MAX, u64::MAX),
+        create_record(2, Some(1), Kind::File, u64::MAX - 3, u64::MAX - 7),
+        create_record(3, Some(1), Kind::File, 9, 11),
+    ];
+    let cancel = AtomicBool::new(false);
+    let mut recognizer = Recognizer {
+        records: &records,
+        paths: HashMap::new(),
+        children: HashMap::new(),
+        children_by_parent: vec![Vec::new(); records.len()],
+        contents: HashMap::new(),
+        bytes_read: 0,
+        reads: 0,
+        cancel: &cancel,
+        started: Instant::now(),
+        result: Recognition::default(),
+        artifacts: HashMap::new(),
+        projects: HashSet::from([0]),
+    };
+    recognizer.add(
+        0,
+        Family::JavaScript,
+        Nature::Project,
+        0,
+        "synthetic_project",
+        false,
+    );
+    recognizer.add(
+        1,
+        Family::JavaScript,
+        Nature::Dependencies,
+        1,
+        "synthetic_dependencies",
+        true,
+    );
+    recognizer.account();
+    let serialized = serde_json::to_value(&recognizer.result.findings).unwrap();
+    let capped = u64::MAX.to_string();
+    assert_eq!(serialized[0]["exclusiveLogicalBytes"], "0");
+    assert_eq!(serialized[0]["exclusiveAllocatedBytes"], "0");
+    assert_eq!(serialized[0]["ownedLogicalBytes"], capped);
+    assert_eq!(serialized[0]["ownedAllocatedBytes"], capped);
+    assert_eq!(serialized[1]["exclusiveLogicalBytes"], capped);
+    assert_eq!(serialized[1]["exclusiveAllocatedBytes"], capped);
+}
