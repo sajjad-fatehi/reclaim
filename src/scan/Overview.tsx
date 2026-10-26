@@ -9,6 +9,7 @@ import {
   categorize,
   categoryNames,
   formatBytes,
+  isCappedBytes,
   segmentWidth,
 } from './accounting';
 import { ScanSettings } from './ScanSettings';
@@ -155,7 +156,16 @@ function ScanResults({
           categorizedBytes === BigInt(accounting.scopeAllocatedBytes);
         const total = volume.totalBytes;
         const remainder = accounting.unscannedOrUnexplainedBytes;
+        const cappedAllocation =
+          isCappedBytes(accounting.scopeAllocatedBytes) ||
+          volumeCategories.some((category) => category.allocatedCapped);
+        const cappedRemainder =
+          cappedAllocation || isCappedBytes(volume.usedBytes);
+        const cappedAccounting =
+          cappedRemainder ||
+          [total, volume.freeBytes, remainder].some(isCappedBytes);
         const consistent =
+          !cappedAccounting &&
           total !== null &&
           BigInt(total) > 0n &&
           volume.freeBytes !== null &&
@@ -214,8 +224,9 @@ function ScanResults({
               </div>
             ) : (
               <p>
-                Usage segments unavailable: missing or inconsistent physical
-                accounting.
+                {cappedAccounting
+                  ? 'Usage segments unavailable: capped accounting cannot reconcile exact volume usage.'
+                  : 'Usage segments unavailable: missing or inconsistent physical accounting.'}
               </p>
             )}
             {matchingCategories && (
@@ -225,7 +236,7 @@ function ScanResults({
                   .filter((category) => category.allocatedBytes > 0n)
                   .map(
                     (category) =>
-                      `${category.name} ${formatBytes(category.allocatedBytes)}`,
+                      `${category.name} ${formatBytes(category.allocatedBytes, category.allocatedCapped)}`,
                   )
                   .join(' · ') || 'No allocated file contributions'}
                 .
@@ -238,7 +249,11 @@ function ScanResults({
               </div>
               <div>
                 <dt>Unscanned / unexplained</dt>
-                <dd>{formatBytes(remainder)}</dd>
+                <dd>
+                  {cappedRemainder
+                    ? 'Unavailable (capped accounting)'
+                    : formatBytes(remainder)}
+                </dd>
               </div>
               <div>
                 <dt>Free blocks</dt>
@@ -293,10 +308,13 @@ function ScanResults({
                     </span>
                   </th>
                   <td className="numeric">
-                    {formatBytes(category.allocatedBytes)}
+                    {formatBytes(
+                      category.allocatedBytes,
+                      category.allocatedCapped,
+                    )}
                   </td>
                   <td className="numeric">
-                    {formatBytes(category.logicalBytes)}
+                    {formatBytes(category.logicalBytes, category.logicalCapped)}
                   </td>
                   <td>
                     <button

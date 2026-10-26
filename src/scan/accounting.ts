@@ -1,5 +1,11 @@
 import type { Finding } from './contract';
 
+export const maximumNativeBytes = 18446744073709551615n;
+
+export function isCappedBytes(value: string | bigint | null): boolean {
+  return value !== null && BigInt(value) === maximumNativeBytes;
+}
+
 export const categoryNames = [
   'Documents',
   'Media',
@@ -11,6 +17,8 @@ export interface Category {
   name: CategoryName;
   logicalBytes: bigint;
   allocatedBytes: bigint;
+  logicalCapped: boolean;
+  allocatedCapped: boolean;
   findingIds: string[];
 }
 export function categoryFor(finding: Finding): CategoryName {
@@ -57,6 +65,8 @@ export function categorize(findings: Finding[]): Category[] {
     name,
     logicalBytes: 0n,
     allocatedBytes: 0n,
+    logicalCapped: false,
+    allocatedCapped: false,
     findingIds: [],
   }));
   for (const finding of findings) {
@@ -70,6 +80,8 @@ export function categorize(findings: Finding[]): Category[] {
       (category) => category.name === categoryFor(finding),
     );
     if (!category) continue;
+    category.logicalCapped ||= isCappedBytes(finding.logicalBytes);
+    category.allocatedCapped ||= isCappedBytes(finding.allocatedBytes);
     category.logicalBytes += BigInt(finding.logicalBytes);
     category.allocatedBytes += BigInt(finding.allocatedBytes);
     category.findingIds.push(finding.id);
@@ -82,7 +94,10 @@ export function categorize(findings: Finding[]): Category[] {
         : 1,
   );
 }
-export function formatBytes(value: string | bigint | null): string {
+export function formatBytes(
+  value: string | bigint | null,
+  capped = false,
+): string {
   if (value === null) return 'Unavailable';
   const bytes = BigInt(value);
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
@@ -93,7 +108,10 @@ export function formatBytes(value: string | bigint | null): string {
     index += 1;
   }
   const tenths = (bytes * 10n) / divisor;
-  return `${tenths / 10n}${index > 0 ? `.${tenths % 10n}` : ''} ${units[index]}`;
+  const formatted = `${tenths / 10n}${index > 0 ? `.${tenths % 10n}` : ''} ${units[index]}`;
+  return capped || isCappedBytes(bytes)
+    ? `At least ${formatted} (capped)`
+    : formatted;
 }
 export function segmentWidth(bytes: string, total: string): string {
   const denominator = BigInt(total);

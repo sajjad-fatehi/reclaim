@@ -325,3 +325,110 @@ test('unavailable volume metrics stay unknown in rendered Overview', async () =>
   expect(within(volume).getByText(/missing or inconsistent/)).toBeTruthy();
   expect(volume.querySelector('.usage-strip')).toBeNull();
 });
+
+test('capped native contributions propagate independently through category sums without precision loss', () => {
+  const maximum = '18446744073709551615';
+  const file = fixtureFindings()[1]!;
+  const findings = [
+    { ...file, logicalBytes: maximum, allocatedBytes: '5' },
+    { ...file, id: '1:2', logicalBytes: '1', allocatedBytes: '7' },
+    {
+      ...file,
+      id: '1:3',
+      displayName: 'synthetic.jpg',
+      logicalBytes: '3',
+      allocatedBytes: maximum,
+    },
+    {
+      ...file,
+      id: '1:4',
+      aliasOf: file.id,
+      logicalBytes: maximum,
+      allocatedBytes: maximum,
+    },
+  ];
+  const categories = categorize(findings);
+  const documents = categories.find(
+    (category) => category.name === 'Documents',
+  )!;
+  const media = categories.find((category) => category.name === 'Media')!;
+  expect(documents.logicalBytes).toBe(18446744073709551616n);
+  expect(documents.logicalCapped).toBe(true);
+  expect(documents.allocatedCapped).toBe(false);
+  expect(formatBytes(documents.logicalBytes, documents.logicalCapped)).toBe(
+    'At least 16.0 EiB (capped)',
+  );
+  expect(formatBytes(documents.allocatedBytes, documents.allocatedCapped)).toBe(
+    '12 B',
+  );
+  expect(media.logicalCapped).toBe(false);
+  expect(media.allocatedCapped).toBe(true);
+  expect(formatBytes(maximum)).toBe('At least 15.9 EiB (capped)');
+  expect(formatBytes('18446744073709551614')).toBe('15.9 EiB');
+});
+
+test.each(['allocation', 'volume'] as const)(
+  'capped %s renders lower bounds and suppresses numerically balanced volume segments',
+  async (source) => {
+    const maximum = '18446744073709551615';
+    const api = createFixtureApi();
+    const progress = fixtureProgress();
+    const file = {
+      ...fixtureFindings()[1]!,
+      allocatedBytes: source === 'allocation' ? maximum : '5',
+      logicalBytes: maximum,
+    };
+    const findings = [fixtureFindings()[0]!, file];
+    progress.logicalBytes = maximum;
+    progress.allocatedBytes = file.allocatedBytes;
+    progress.volumes = [
+      {
+        volume: {
+          ...fixtureLocation.volume,
+          totalBytes: maximum,
+          usedBytes: maximum,
+          freeBytes: '0',
+          availableBytes: '0',
+        },
+        scopeLogicalBytes: maximum,
+        scopeAllocatedBytes: file.allocatedBytes,
+        unscannedOrUnexplainedBytes:
+          source === 'allocation' ? '0' : '18446744073709551610',
+      },
+    ];
+    vi.spyOn(api, 'page').mockImplementation(async (_generation, offset) => ({
+      progress,
+      offset,
+      nextOffset: null,
+      findings,
+    }));
+    render(
+      <ScanProvider api={api}>
+        <Overview onInvestigate={() => undefined} />
+      </ScanProvider>,
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    fireEvent.click(screen.getByRole('button', { name: 'Start scan' }));
+    await act(async () => vi.advanceTimersByTimeAsync(320));
+    const volume = screen.getByRole('region', { name: 'Volume fixture usage' });
+    expect(volume.querySelector('.usage-strip')).toBeNull();
+    expect(
+      within(volume).getByText(/capped accounting cannot reconcile/),
+    ).toBeTruthy();
+    expect(
+      within(volume).getByText('At least 15.9 EiB (capped) total'),
+    ).toBeTruthy();
+    expect(
+      within(volume).getByText('Unavailable (capped accounting)'),
+    ).toBeTruthy();
+    const documents = screen
+      .getByRole('button', { name: 'Investigate Documents' })
+      .closest('tr');
+    if (!documents) throw new Error('Missing Documents category row');
+    expect(
+      within(documents).getAllByText('At least 15.9 EiB (capped)'),
+    ).toHaveLength(source === 'allocation' ? 2 : 1);
+    if (source === 'volume')
+      expect(within(documents).getByText('5 B')).toBeTruthy();
+  },
+);

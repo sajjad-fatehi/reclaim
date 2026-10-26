@@ -197,3 +197,15 @@ a new system. After the final copy edit, `npm test -- src/shell/shell.test.tsx`
 passed four tests and `npm run build:web` passed strict TypeScript and bundling.
 Thirty-seven relative documentation links resolved. Local proofs do not substitute
 for manager-owned hosted CI or integration.
+
+### Capped accounting review correction
+
+Acceptance: native byte fields equal to `u64::MAX` display an explicit at-least,
+capped label. Category logical/allocated sums retain independent capped flags
+when any counted contribution is capped, including sums greater than `u64::MAX`.
+BigInt precision and ordinary formatting remain unchanged. Volume reconciliation
+segments are suppressed when contributing volume/allocation values are capped;
+a remainder derived from capped used/allocation values is unavailable rather than
+an exact difference. Synthetic boundary DTOs prove this without creating huge files.
+Merge only approved `origin/dev` at `be65554`, preserving recognition phase,
+structs/tests/ACL alongside exclusions, preferences and current-location state.
