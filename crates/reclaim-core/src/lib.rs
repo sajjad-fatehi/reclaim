@@ -2,3 +2,5 @@
 
 pub mod recognition;
 pub mod scan;
+
+pub mod docker;

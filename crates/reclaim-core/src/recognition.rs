@@ -25,6 +25,7 @@ const RECOGNITION_BUDGET: Duration = Duration::from_secs(15);
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Family {
+    Docker,
     JavaScript,
     Python,
     Rust,

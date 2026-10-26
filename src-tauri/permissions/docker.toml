@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "docker-read-only"
+description = "Allow explicit optional local Docker inventory and cancellation; no mutation or arbitrary process access."
+commands.allow = ["docker_inventory", "docker_cancel"]

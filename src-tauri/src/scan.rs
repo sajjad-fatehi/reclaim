@@ -957,7 +957,7 @@ mod tests {
     #[test]
     fn ipc_dispatch_serializes_bytes_rejects_invalid_payload_and_wrong_window() {
         let (_temporary, service, scope) = fixture();
-        let mut context = tauri::generate_context!();
+        let mut context = crate::test_context();
         context.config_mut().app.windows.clear();
         let app = mock_builder()
             .manage(service.clone())
