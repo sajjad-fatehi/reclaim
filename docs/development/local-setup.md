@@ -38,12 +38,12 @@ Build uses locked Rust dependencies, compiles local frontend assets and bundles 
 
 ## Ownership and security
 
-- `crates/reclaim-core`: Tauri-independent metadata traversal, identity, accounting and coverage rules.
+- `crates/reclaim-core`: Tauri-independent metadata traversal, identity, accounting, coverage and scoped development-recognition rules.
 - `src-tauri`: native lifecycle/configuration, folder selection, process-local scope authority and bounded scanner IPC. App metadata still uses built-in Tauri facilities.
 - `src`: React presentation and native connection state. One stylesheet holds current theme roles.
 - Root Cargo workspace and lockfile own Rust resolution; npm lockfile owns frontend resolution.
 
-Name/version and the narrow `scan-read-only` permission are granted only to the local `main` window. Production CSP allows bundled scripts/styles/images and native IPC, with no remote content or external network access. Development CSP additionally allows Vite's local HMR transport and injected styles/preamble. No generic filesystem, shell, cleanup, privileged helper or telemetry capability exists. The native dialog plugin is used from Rust only; its frontend dialog/filesystem permissions are not granted. No scan starts at launch. See [scanner contract](../specs/features/scan-foundation.md) for scope grants, resource limits and coverage semantics.
+Name/version and the narrow `scan-read-only` permission are granted only to the local `main` window. Production CSP allows bundled scripts/styles/images and native IPC, with no remote content or external network access. Development CSP additionally allows Vite's local HMR transport and injected styles/preamble. No generic filesystem, shell, cleanup, privileged helper or telemetry capability exists. The native dialog plugin is used from Rust only; its frontend dialog/filesystem permissions are not granted. No scan starts at launch. The same worker runs bounded read-only development recognition after measurement; `recognition_page` exposes terminal findings under the same permission. See [recognition contract](../specs/features/development-recognition.md) for known metadata reads and optional confined CLT Git status. See [scanner contract](../specs/features/scan-foundation.md) for scope grants, resource limits and coverage semantics.
 
 See [scaffold specification and verification](../specs/desktop-scaffold.md) for acceptance evidence and limits. Unimplemented product/design capabilities remain planned; the scanner contract above describes the delivered native producer.
 
