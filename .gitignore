@@ -1,6 +1,7 @@
 /target/
 /node_modules/
 /dist/
+/graphify-out/
 /src-tauri/gen/schemas/
 *.log
 .DS_Store
