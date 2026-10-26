@@ -646,7 +646,7 @@ mod tests {
         (temporary, service, scope)
     }
 
-    fn terminal(service: &ScanService) -> Progress {
+    pub(super) fn terminal(service: &ScanService) -> Progress {
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             let authority = lock(&service.authority);
@@ -1056,7 +1056,9 @@ mod tests {
                 scan_page,
                 scan_cancel,
                 scan_register_scope,
-                recognition_page
+                recognition_page,
+                explore::scan_inspect,
+                explore::scan_reveal
             ])
             .build(context)
             .unwrap();
@@ -1097,6 +1099,39 @@ mod tests {
         assert_eq!(recognized["finished"], true);
         assert_eq!(recognized["findings"], json!([]));
 
+        assert!(ipc(
+            &other,
+            "scan_inspect",
+            json!({"generation": generation, "findingId": format!("{generation}:0")})
+        )
+        .is_err());
+        assert!(ipc(
+            &other,
+            "scan_reveal",
+            json!({"generation": generation, "findingId": format!("{generation}:0")})
+        )
+        .is_err());
+        assert!(ipc(
+            &window,
+            "scan_reveal",
+            json!({"generation": generation, "findingId": "/outside/forged"})
+        )
+        .is_err());
+        assert!(ipc(
+            &window,
+            "scan_reveal",
+            json!({"generation": generation, "findingId": 42})
+        )
+        .is_err());
+        let inspected = ipc(
+            &window,
+            "scan_inspect",
+            json!({"generation": generation, "findingId": format!("{generation}:0")}),
+        )
+        .unwrap();
+        assert!(inspected["displayPath"].as_str().unwrap().starts_with('/'));
         assert!(app.state::<Arc<ScanService>>().cancel(u32::MAX).is_err());
     }
 }
+
+pub mod explore;

@@ -798,3 +798,88 @@ input[type='checkbox'] {
   border-radius: 2px;
   margin-right: var(--space-small);
 }
+
+.explore-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-large);
+  min-width: 0;
+}
+.explore-content {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-medium);
+}
+.breadcrumbs,
+.row-actions,
+.finding-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-small);
+}
+.breadcrumbs {
+  flex-wrap: wrap;
+}
+.breadcrumbs button {
+  white-space: normal;
+  text-align: start;
+}
+.breadcrumbs [aria-current='location'] {
+  background: var(--selection);
+  color: var(--selection-text);
+}
+.explore-search {
+  display: grid;
+  gap: var(--space-small);
+}
+.explore-content .table-scroll {
+  max-block-size: 32rem;
+}
+.explore-content .result-table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+.explore-content .result-table tbody th {
+  min-width: 12rem;
+  max-width: 26rem;
+  text-align: start;
+  font-weight: 500;
+}
+.finding-name svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.finding-path {
+  display: block;
+  font-size: 0.75rem;
+  margin-block-start: var(--space-small);
+  white-space: normal;
+}
+.explore-content tr[data-selected='true'] {
+  background: var(--selection);
+  color: var(--selection-text);
+}
+.inspection-facts {
+  display: grid;
+  gap: var(--space-small);
+}
+.inspection-facts dt {
+  color: var(--secondary);
+}
+.inspection-facts dd {
+  margin: 0 0 var(--space-small);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.item-inspection h3:not(:first-child) {
+  margin-block-start: var(--space-large);
+}
+.inspector-content ul {
+  padding-inline-start: var(--space-medium);
+}
+.inspector-content button {
+  white-space: normal;
+}

@@ -19,6 +19,8 @@ fn main() {
             scan::scan_status,
             scan::scan_page,
             scan::scan_cancel,
+            scan::explore::scan_inspect,
+            scan::explore::scan_reveal,
             scan::recognition_page,
             docker::docker_inventory,
             docker::docker_cancel

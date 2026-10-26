@@ -12,6 +12,8 @@ fn main() {
             "scan_page",
             "scan_cancel",
             "recognition_page",
+            "scan_inspect",
+            "scan_reveal",
             "docker_inventory",
             "docker_cancel",
         ]),
