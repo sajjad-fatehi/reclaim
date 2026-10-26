@@ -9,6 +9,7 @@ Reclaim has an early desktop scaffold. Product and design documents describe pla
 - [Local development](development/local-setup.md): requirements, installation, checks, local build and code ownership.
 - [Desktop scaffold](specs/desktop-scaffold.md): scope, safety and verification evidence.
 - [Specification template](specs/template.md): lightweight behavior and acceptance record.
+- [Application feature specifications](specs/features/index.md): complete approved feature scope, dependency contracts and delivery acceptance.
 - [Coding-agent rules](../AGENTS.md): concise repository-wide entry point.
 - [Contributing](../CONTRIBUTING.md): focused contributions, validation and branch flow.
 - [Security](../SECURITY.md): current private reporting limitations.
