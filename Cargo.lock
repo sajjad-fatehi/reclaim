@@ -2396,6 +2396,7 @@ name = "reclaim-desktop"
 version = "0.1.0"
 dependencies = [
  "reclaim-core",
+ "rustix",
  "serde",
  "serde_json",
  "tauri",

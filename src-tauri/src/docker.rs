@@ -2,13 +2,14 @@
 use reclaim_core::docker::{self, Failure, Inventory};
 use serde::Serialize;
 use std::io::Read;
+use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tauri::{State, WebviewWindow};
 
-const OUTPUT_LIMIT: u64 = 8 * 1024 * 1024;
+const OUTPUT_LIMIT: usize = 8 * 1024 * 1024;
 const BUDGET: Duration = Duration::from_secs(20);
 
 #[derive(Default)]
@@ -56,39 +57,54 @@ impl LocalTransport<'_> {
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
         let mut child = command.spawn().map_err(|_| Failure::Unavailable)?;
-        let output = child.stdout.take().ok_or(Failure::Unavailable)?;
-        let reader = std::thread::spawn(move || {
+        let outcome = (|| {
+            let mut output = child.stdout.take().ok_or(Failure::Unavailable)?;
+            // Descendants can retain stdout after CLI exit; pipe waits must stay cancellable.
+            let flags =
+                rustix::fs::fcntl_getfl(output.as_fd()).map_err(|_| Failure::Unavailable)?;
+            rustix::fs::fcntl_setfl(output.as_fd(), flags | rustix::fs::OFlags::NONBLOCK)
+                .map_err(|_| Failure::Unavailable)?;
             let mut bytes = Vec::new();
-            output
-                .take(OUTPUT_LIMIT + 1)
-                .read_to_end(&mut bytes)
-                .map(|_| bytes)
-        });
-        let status = loop {
-            if let Err(failure) = self.check() {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = reader.join();
-                return Err(failure);
-            }
-            match child.try_wait() {
-                Ok(Some(status)) => break Ok(status),
-                Ok(None) => std::thread::sleep(Duration::from_millis(20)),
-                Err(_) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break Err(Failure::Unavailable);
+            let mut buffer = [0_u8; 65_536];
+            let mut status = None;
+            let mut eof = false;
+            loop {
+                self.check()?;
+                let mut received = false;
+                if !eof {
+                    let remaining = (OUTPUT_LIMIT + 1 - bytes.len()).min(buffer.len());
+                    match output.read(&mut buffer[..remaining]) {
+                        Ok(0) => eof = true,
+                        Ok(count) => {
+                            bytes.extend_from_slice(&buffer[..count]);
+                            if bytes.len() > OUTPUT_LIMIT {
+                                return Err(Failure::Limited);
+                            }
+                            received = true;
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                        Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                        Err(_) => return Err(Failure::Unavailable),
+                    }
+                }
+                if status.is_none() {
+                    status = child.try_wait().map_err(|_| Failure::Unavailable)?;
+                }
+                if eof {
+                    if let Some(status) = status {
+                        return Ok((bytes, status));
+                    }
+                }
+                if !received {
+                    std::thread::sleep(Duration::from_millis(20));
                 }
             }
-        };
-        let bytes = reader
-            .join()
-            .map_err(|_| Failure::Unavailable)?
-            .map_err(|_| Failure::Unavailable)?;
-        if bytes.len() as u64 > OUTPUT_LIMIT {
-            return Err(Failure::Limited);
+        })();
+        if outcome.is_err() {
+            let _ = child.kill();
         }
-        let status = status?;
+        let _ = child.wait();
+        let (bytes, status) = outcome?;
         if !status.success() {
             return Err(match status.code() {
                 Some(28) if executable == Path::new("/usr/bin/curl") => Failure::Timeout,

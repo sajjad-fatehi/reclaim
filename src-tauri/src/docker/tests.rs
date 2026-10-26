@@ -241,3 +241,134 @@ fn unix_transport_sends_fixed_get_without_credentials_or_network_fetch() {
     assert_eq!(body, br#"{"synthetic":true}"#);
     server.join().unwrap();
 }
+
+struct InheritedStdoutFixture {
+    directory: tempfile::TempDir,
+    executable: PathBuf,
+}
+
+impl InheritedStdoutFixture {
+    fn new() -> Self {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("synthetic-docker");
+        std::fs::write(
+            &executable,
+            "#!/bin/sh\nprintf '%s' \"$$\" > \"$HOME/parent.pid\"\n/bin/sleep 5 &\nprintf '%s' \"$!\" > \"$HOME/holder.pid\"\nprintf synthetic\nexit 0\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        Self {
+            directory,
+            executable,
+        }
+    }
+
+    fn process(&self, name: &str) -> Option<rustix::process::Pid> {
+        std::fs::read_to_string(self.directory.path().join(name))
+            .ok()
+            .and_then(|value| value.parse::<i32>().ok())
+            .and_then(rustix::process::Pid::from_raw)
+    }
+
+    fn parent_exited(&self) -> bool {
+        self.process("parent.pid").is_some_and(|parent| {
+            rustix::process::test_kill_process(parent) == Err(rustix::io::Errno::SRCH)
+        })
+    }
+
+    fn cleanup(&self) -> bool {
+        let Some(holder) = self.process("holder.pid") else {
+            return true;
+        };
+        let _ = rustix::process::kill_process(holder, rustix::process::Signal::KILL);
+        let started = Instant::now();
+        while rustix::process::test_kill_process(holder).is_ok() {
+            if started.elapsed() >= Duration::from_secs(2) {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let _ = std::fs::remove_file(self.directory.path().join("holder.pid"));
+        true
+    }
+}
+
+impl Drop for InheritedStdoutFixture {
+    fn drop(&mut self) {
+        let _ = self.cleanup();
+    }
+}
+
+fn assert_inherited_stdout_terminates(cancel: bool) {
+    let fixture = InheritedStdoutFixture::new();
+    let service = DockerService::default();
+    let transport = LocalTransport {
+        service: &service,
+        started: if cancel {
+            Instant::now()
+        } else {
+            Instant::now() - BUDGET + Duration::from_secs(1)
+        },
+        cli: fixture.executable.clone(),
+        home: fixture.directory.path().to_owned(),
+    };
+    let cancelled_at = std::sync::Mutex::new(None);
+    let started = Instant::now();
+    let result = std::thread::scope(|scope| {
+        if cancel {
+            scope.spawn(|| {
+                let started = Instant::now();
+                while !fixture.parent_exited() {
+                    assert!(
+                        started.elapsed() < Duration::from_secs(2),
+                        "wrapper did not exit"
+                    );
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                assert!(fixture.process("holder.pid").is_some());
+                *cancelled_at.lock().unwrap() = Some(Instant::now());
+                service.cancelled.store(true, Ordering::Relaxed);
+            });
+        }
+        transport.run(&fixture.executable, &[])
+    });
+    let elapsed = started.elapsed();
+    let cancellation_elapsed = cancelled_at
+        .lock()
+        .unwrap()
+        .map(|instant| instant.elapsed());
+    let launched_holder = fixture.process("holder.pid").is_some();
+    let parent_exited = fixture.parent_exited();
+    assert!(fixture.cleanup(), "fixture holder not reaped");
+    assert!(launched_holder, "wrapper did not launch holder: {result:?}");
+    assert!(parent_exited, "direct wrapper child was not reaped");
+    assert_eq!(
+        result.unwrap_err(),
+        if cancel {
+            Failure::Cancelled
+        } else {
+            Failure::Timeout
+        }
+    );
+    if let Some(elapsed) = cancellation_elapsed {
+        assert!(
+            elapsed < Duration::from_millis(250),
+            "cancellation exceeded bound: {elapsed:?}"
+        );
+    }
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "command exceeded bound: {elapsed:?}"
+    );
+}
+
+#[test]
+fn inherited_stdout_after_parent_exit_respects_deadline() {
+    assert_inherited_stdout_terminates(false);
+}
+
+#[test]
+fn inherited_stdout_after_parent_exit_respects_cancellation() {
+    assert_inherited_stdout_terminates(true);
+}

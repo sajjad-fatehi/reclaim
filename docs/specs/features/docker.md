@@ -125,3 +125,49 @@ that six real engine installations were exercised. No live daemon, app bundle,
 WebView or Development UI proof was run for this backend-only delivery. Development
 owns presentation of this consumer contract. No startup, pull, context mutation,
 cleanup, deletion, secrets inspection or filesystem attribution was performed.
+
+### Review repair acceptance: inherited stdout
+
+A CLI wrapper can exit while a descendant retains stdout. Command completion must
+require both stdout EOF and direct-child exit, while continuing deadline/cancel
+checks. Pipe reads must be nonblocking; no reader thread or unconditional pipe
+join may outlive the command budget. Preserve the output cap and direct-child
+kill/reap on failure. Disposable wrappers must reproduce both deadline and
+cancellation after parent exit; fixture descendants must be explicitly cleaned up.
+No live Docker, additional shell IPC, parser or frontend changes are involved.
+
+The repair reuses the existing locked `rustix` dependency directly in the native
+adapter for safe nonblocking `fcntl`, matching recognition's Git pipe pattern.
+No output-reader thread is created. The same loop drains at most 8 MiB plus one
+limit-detection byte, observes direct-child exit and continues checking cancellation
+and the total deadline until EOF. Both success prerequisites are required; an
+exited wrapper with an open descendant pipe cannot report premature success.
+Failures close the read pipe, kill the direct child if still alive, and reap it.
+Only the directly spawned process is owned/reaped; arbitrary descendants are not
+terminated. Fixtures explicitly kill their recorded isolated stdout-holder PID,
+verify its disappearance, and retain a five-second natural-exit fallback. No
+process-group signaling or broader process-management capability is introduced.
+
+Polling remains 20 ms while idle and runs between bounded reads under continuous
+output. These are cooperative checks, not hard real-time guarantees: process spawn,
+OS scheduling, kill and reap still depend on the OS. A descendant cannot stall a
+blocking pipe read or thread join. Regression bounds allow scheduling tolerance:
+one-second remaining deadline returns within two seconds; cancellation after
+verified parent exit returns within 250 ms. No live Docker is exercised.
+
+Focused repair evidence (synthetic wrappers only):
+
+- Before the runtime edit,
+  `cargo test -p reclaim-desktop --locked inherited_stdout_after_parent_exit -- --nocapture`
+  failed both regressions: commands returned `Ok("synthetic")` after the inherited
+  pipe stayed open for five seconds, ignoring deadline and cancellation (5.02 s
+  combined test duration). Each wrapper's direct-child exit was verified.
+- After the edit, the same focused regressions passed (1.02 s combined duration).
+- Final `cargo test -p reclaim-desktop --locked docker::tests` passed all nine native
+  Docker tests (1.04 s), including output caps, direct-child kill/reap, inherited
+  stdout deadline/cancellation, isolated holder cleanup, Unix GETs and IPC guards.
+- `cargo clippy -p reclaim-desktop --all-targets --locked -- -D warnings`,
+  `cargo fmt --all -- --check`, and `rtk git diff --check` passed.
+
+Unchanged parser, scanner and frontend evidence above is reused. No live daemon,
+production build, full frontend gate or additional UI verification was run.
