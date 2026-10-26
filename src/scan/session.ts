@@ -292,6 +292,7 @@ export class ScanSession {
   };
   investigate = (investigation: Investigation): void =>
     this.update({ investigation });
+  clearInvestigation = (): void => this.update({ investigation: null });
   private schedule(): void {
     clearTimeout(this.timer);
     if (!this.active || !this.state.snapshot || this.state.snapshot.settled)

@@ -2,15 +2,18 @@ import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { AppShell } from '../shell/AppShell';
 import type { Destination } from '../shell/AppShell';
-import { Notice } from '../shell/primitives';
+import { Explore } from '../explore/Explore';
+import type { InspectionApi } from '../explore/contract';
 import { useScanSession } from './useScanSession';
 import { Overview } from './Overview';
 import { ScanSettings } from './ScanSettings';
 
 export function ScanApplication({
   connectionStatus,
+  inspectionApi,
 }: {
   connectionStatus: string;
+  inspectionApi?: InspectionApi | undefined;
 }): ReactElement {
   const { state, session } = useScanSession();
   const [destination, setDestination] = useState<Destination>('overview');
@@ -43,23 +46,12 @@ export function ScanApplication({
             {state.error && <p role="alert">{state.error}</p>}
           </>
         ),
-        explore: state.investigation ? (
-          <div className="investigation-handoff">
-            <h2>{state.investigation.category}</h2>
-            <p>
-              {state.investigation.findingIds.length} measured files ·
-              generation {state.investigation.generation}
-            </p>
-            <Notice>
-              Explore navigation and shared inspector are coming in the next
-              feature. This category context is retained; no additional scan
-              starts.
-            </Notice>
-            <button onClick={() => setDestination('overview')}>
-              Back to Overview
-            </button>
-          </div>
-        ) : undefined,
+        explore: (
+          <Explore
+            api={inspectionApi}
+            onOverview={() => setDestination('overview')}
+          />
+        ),
       }}
     />
   );

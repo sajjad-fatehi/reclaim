@@ -22,6 +22,18 @@ async function renderApplication(rootContainer: HTMLElement): Promise<void> {
     );
     return;
   }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(location.search).get('fixture') === 'explore'
+  ) {
+    const { ExploreFixture } = await import('./explore/ExploreFixture');
+    createRoot(rootContainer).render(
+      <StrictMode>
+        <ExploreFixture />
+      </StrictMode>,
+    );
+    return;
+  }
   createRoot(rootContainer).render(
     <StrictMode>
       <App />

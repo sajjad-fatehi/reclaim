@@ -4,7 +4,7 @@ use reclaim_desktop::{
     scan::{self, BoundaryResult, Location, Locations, ScanService},
 };
 use std::sync::Arc;
-use tauri::{State, WebviewWindow};
+use tauri::{Manager, State, WebviewWindow};
 
 struct Fixture {
     configuration: std::path::PathBuf,
@@ -52,11 +52,37 @@ fn main() {
         .prefix("reclaim-SYNTHETIC-overview-")
         .tempdir()
         .unwrap();
+    let compact = std::env::args().any(|argument| argument == "--compact");
+    let enlarged = std::env::args().any(|argument| argument == "--enlarged");
     let selected = temporary.path().join("SYNTHETIC-small");
     let large = temporary.path().join("SYNTHETIC-large");
     std::fs::create_dir_all(selected.join("cache")).unwrap();
     std::fs::create_dir(&large).unwrap();
     std::fs::write(selected.join("synthetic.txt"), b"12345").unwrap();
+    std::fs::create_dir_all(selected.join("開発/node_modules")).unwrap();
+    std::fs::create_dir(selected.join("other")).unwrap();
+    std::fs::write(
+        selected.join("開発/package.json"),
+        r#"{"name":"SYNTHETIC-project"}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        selected.join("開発/node_modules/.package-lock.json"),
+        r#"{"lockfileVersion":3,"packages":{}}"#,
+    )
+    .unwrap();
+    std::fs::write(selected.join("開発/.hidden"), b"fixture").unwrap();
+    std::fs::write(selected.join("開発/same.txt"), b"fixture").unwrap();
+    std::fs::write(selected.join("other/same.txt"), b"fixture").unwrap();
+    for index in 0..125 {
+        std::fs::write(
+            selected
+                .join("other")
+                .join(format!("SYNTHETIC-{index}.txt")),
+            b"fixture",
+        )
+        .unwrap();
+    }
     std::fs::write(selected.join("synthetic.jpg"), vec![0u8; 32768]).unwrap();
     std::fs::write(selected.join("cache/excluded.bin"), vec![0u8; 1024]).unwrap();
     for index in 0..20_000 {
@@ -88,13 +114,16 @@ fn main() {
             scan::scan_current,
             scan::scan_status,
             scan::scan_page,
-            scan::scan_cancel
+            scan::scan_cancel,
+            scan::explore::scan_inspect,
+            scan::explore::scan_reveal
         ]);
     let mut context = tauri::generate_context!();
     context.config_mut().app.windows.clear();
     context.config_mut().build.dev_url = None;
     let app = builder.build(context).unwrap();
     tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::App("index.html".into()))
+        .initialization_script(if enlarged { "document.addEventListener('DOMContentLoaded', () => { document.documentElement.style.fontSize = '200%'; });" } else { "" })
         .initialization_script("window.addEventListener('error', event => { location.href = '/fixture-error?message=' + encodeURIComponent(event.message); });")
         .on_navigation(|url| {
             if url.path() == "/fixture-error" {
@@ -103,11 +132,23 @@ fn main() {
             }
             true
         })
-        .title("Reclaim — SYNTHETIC Overview fixture")
-        .inner_size(1200.0, 900.0)
+        .title("Reclaim — SYNTHETIC Explore fixture")
+        .inner_size(if compact { 900.0 } else { 1440.0 }, if compact { 600.0 } else { 1000.0 })
         .build()
         .unwrap();
-    let exit = app.run_return(|_, _| {});
+    let exit = app.run_return(|app, event| {
+        if matches!(event, tauri::RunEvent::Ready) {
+            let window = app.get_webview_window("main").unwrap();
+            window.show().unwrap();
+            window.set_focus().unwrap();
+            println!(
+                "SYNTHETIC window visible={} size={:?} position={:?}",
+                window.is_visible().unwrap(),
+                window.inner_size().unwrap(),
+                window.outer_position().unwrap()
+            );
+        }
+    });
     drop(temporary);
     std::process::exit(exit);
 }

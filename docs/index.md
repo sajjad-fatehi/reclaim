@@ -12,6 +12,7 @@ Reclaim has a working desktop shell, appearance controls and a read-only native 
 - [Read-only scan foundation](specs/features/scan-foundation.md): implemented native authority, measurement, transport and fixture evidence.
 - [Specification template](specs/template.md): lightweight behavior and acceptance record.
 - [Overview and shared scan session](specs/features/overview-and-scope.md): settings, native persistence, session consumer contract and measured accounting.
+- [Explore and shared inspector](specs/features/explore.md): shared-session browsing, bounded presentation, identity-authorized Finder handoff and explicit verification limits.
 - [Application feature specifications](specs/features/index.md): complete approved feature scope, dependency contracts and delivery acceptance.
 - [Coding-agent rules](../AGENTS.md): concise repository-wide entry point.
 - [Contributing](../CONTRIBUTING.md): focused contributions, validation and branch flow.
