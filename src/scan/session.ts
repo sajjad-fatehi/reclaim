@@ -16,6 +16,7 @@ export interface ScanSnapshot {
   settled: boolean;
 }
 export interface Investigation {
+  selectedId?: string | null;
   generation: number;
   category: string;
   findingIds: string[];

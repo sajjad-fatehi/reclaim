@@ -6,9 +6,13 @@ import { Inspector, Notice, Toolbar } from '../shell/primitives';
 import { actionError, nativeInspectionApi } from './contract';
 import type { Inspection, InspectionApi } from './contract';
 import { measurementStatus } from './model';
+import type { DockerItem } from '../development/contract';
+import { DockerDetails } from '../development/DockerDetails';
 
 export interface ItemInspectorProps {
   finding: Finding | null;
+  dockerItem?: DockerItem | null | undefined;
+  dockerMeasuredAtMs?: string | null | undefined;
   progress: Progress;
   stale: boolean;
   settled: boolean;
@@ -24,7 +28,7 @@ export function ItemInspector(props: ItemInspectorProps): ReactElement {
   const previousSelection = useRef<string | null>(null);
   const selectionKey = props.finding
     ? `${props.progress.generation}:${props.finding.id}`
-    : null;
+    : (props.dockerItem?.artifact.findingId ?? null);
   useEffect(() => {
     if (
       previousSelection.current !== null &&
@@ -37,9 +41,22 @@ export function ItemInspector(props: ItemInspectorProps): ReactElement {
   return (
     <Inspector
       title="Item details"
-      open={props.finding !== null}
+      open={props.finding !== null || !!props.dockerItem}
       onClose={props.onClose}
     >
+      {props.dockerItem && (
+        <div
+          ref={contentReference}
+          tabIndex={-1}
+          role="group"
+          aria-label={`Docker ${props.dockerItem.identity}`}
+        >
+          <DockerDetails
+            item={props.dockerItem}
+            measuredAtMs={props.dockerMeasuredAtMs ?? null}
+          />
+        </div>
+      )}
       {props.finding && (
         <div
           className="item-inspection"
