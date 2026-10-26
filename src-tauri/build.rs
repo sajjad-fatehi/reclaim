@@ -12,6 +12,8 @@ fn main() {
             "scan_page",
             "scan_cancel",
             "recognition_page",
+            "docker_inventory",
+            "docker_cancel",
         ]),
     ))
     .expect("Failed to build native application permissions");

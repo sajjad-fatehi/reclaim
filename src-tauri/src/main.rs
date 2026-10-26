@@ -1,11 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use reclaim_desktop::{preferences, scan};
+use reclaim_desktop::{docker, preferences, scan};
 
 fn main() {
     tauri::Builder::default()
         .manage(std::sync::Arc::new(scan::ScanService::default()))
         .manage(preferences::PreferencesService::default())
+        .manage(std::sync::Arc::new(docker::DockerService::default()))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             preferences::preferences_load,
@@ -18,7 +19,9 @@ fn main() {
             scan::scan_status,
             scan::scan_page,
             scan::scan_cancel,
-            scan::recognition_page
+            scan::recognition_page,
+            docker::docker_inventory,
+            docker::docker_cancel
         ])
         .run(tauri::generate_context!())
         .expect("Failed to run Reclaim desktop application");

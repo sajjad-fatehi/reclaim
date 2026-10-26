@@ -240,3 +240,21 @@ Review follow-up evidence:
 Existing reviewed native light/dark captures are reused. No huge files, new visual
 review, native fixture scan, release build, push or hosted CI run was needed for
 this numeric presentation correction and focused integration proof.
+
+### Approved Docker integration
+
+Merged approved dev `2c16ec9164102a3d00701eb28a8f40b22be67550` after PR #10
+passed hosted checks. Resolved only native module/entrypoint conflicts by keeping
+preferences, scanner/recognition and Docker services/commands together. Kept the
+shared test-only `test_context`; scanner and Docker IPC tests use this one generated
+context, preserving the duplicate-plist-context repair. Removed an automatically
+merged duplicate `serde_json` manifest entry; no dependency version changed.
+
+Focused integration proof: `cargo test -p reclaim-desktop --lib ipc_ --locked`
+passed both scanner/recognition and Docker IPC tests (two passed, 16 filtered).
+`cargo check -p reclaim-desktop --bin reclaim-desktop --locked` passed, checking
+production managed services and command registration. `cargo fmt --all -- --check`
+and `git diff --cached --check` passed. Imported Docker implementation/tests match
+approved dev unchanged. Frontend and accepted capped-value behavior are unchanged;
+prior frontend and reviewed native visual proofs are retained. No live Docker
+inventory, UI review/captures, release build, push or hosted CI run was performed.

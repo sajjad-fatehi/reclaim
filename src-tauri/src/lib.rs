@@ -2,4 +2,10 @@
 
 pub mod scan;
 
+pub mod docker;
 pub mod preferences;
+
+#[cfg(test)]
+pub(crate) fn test_context() -> tauri::Context<tauri::test::MockRuntime> {
+    tauri::generate_context!()
+}
