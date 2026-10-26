@@ -55,3 +55,11 @@ Native decorated titlebar remains outside web content. Shared native-semantic pr
 Integrated with `origin/dev` at `a1de80755354b02f4962322050f261ef30312506`. The [read-only scan foundation](scan-foundation.md) now exists natively: explicit scope grants, bounded read-only measurement, cancellation and narrow IPC are implemented. The shell still owns no scanner/session state, calls no scan commands on launch and keeps its unconnected scan views honest. Scan UI and shared session orchestration remain the Overview feature's responsibility; cleanup is unimplemented.
 
 The evidence above records the standalone shell checkpoint; it does not claim scanner capabilities are absent from the integrated application. Native grants/capabilities and scanner package scripts are preserved unchanged from dev, including `test:rust` and `check` invoking Rust tests. The shell's Phosphor dependency remains present. Integration resolution changes documentation only; prior shell/native proofs remain reusable, and hosted CI owns integrated full checks/build.
+
+## Overview integration
+
+The [Overview feature](overview-and-scope.md) supplies the shell's existing view
+and context slots, with optional controlled destination/navigation and appearance
+props. Production appearance joins the validated native configuration owner;
+standalone shell fixtures keep their original browser persistence for isolated
+presentation tests. Existing shell callers and both theme token sets remain valid.

@@ -11,6 +11,7 @@ import { ArrowRight } from '@phosphor-icons/react/ArrowRight';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { useAppearance } from './appearance';
+import type { AppearanceState } from './appearance';
 import { usePanelMotion } from './motion';
 import { EmptyState, Notice } from './primitives';
 import folderIllustration from '../../assets/illustrations/reclaim-folder.webp';
@@ -62,6 +63,9 @@ export interface AppShellProps {
   views?: Partial<Record<Destination, ReactNode>>;
   context?: ReactNode;
   connectionStatus: string;
+  appearance?: AppearanceState;
+  destination?: Destination;
+  onNavigate?: (destination: Destination) => void;
 }
 
 function ViewSlot({
@@ -112,9 +116,16 @@ export function AppShell({
   views = {},
   context,
   connectionStatus,
+  appearance,
+  destination: controlledDestination,
+  onNavigate,
 }: AppShellProps): ReactElement {
-  const [destination, setDestination] = useState<Destination>('overview');
-  const { preference, persistenceError, changeAppearance } = useAppearance();
+  const [localDestination, setLocalDestination] =
+    useState<Destination>('overview');
+  const destination = controlledDestination ?? localDestination;
+  const setDestination = onNavigate ?? setLocalDestination;
+  const { preference, persistenceError, changeAppearance } =
+    useAppearance(appearance);
   const mainReference = useRef<HTMLElement>(null);
   const navigationReference = useRef<HTMLElement>(null);
 
@@ -297,7 +308,10 @@ export function AppShell({
                           />
                         )}
                       </div>
-                      <Notice>No files are scanned or changed.</Notice>
+                      <Notice>
+                        This view is not available yet. No files are removed
+                        here.
+                      </Notice>
                     </>
                   ))
                 )}

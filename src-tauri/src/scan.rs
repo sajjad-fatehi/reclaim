@@ -1,6 +1,8 @@
 //! Process-local authority and bounded transport. Never accepts frontend paths.
 
-use reclaim_core::scan::{self, lock, Finding, Issue, Progress, Root, ScanData, Status, Volume};
+use reclaim_core::scan::{
+    self, lock, Exclusion, Finding, Issue, Progress, Root, ScanData, Status, Volume,
+};
 use serde::Serialize;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -68,6 +70,7 @@ struct Candidate {
 pub struct Scope {
     pub id: String,
     pub roots: Vec<Location>,
+    pub exclusions: Vec<Exclusion>,
 }
 
 #[derive(Serialize)]
@@ -195,7 +198,11 @@ impl Authority {
                 roots.push(candidate.location.clone());
             }
         }
-        let scope = Scope { id: token(), roots };
+        let scope = Scope {
+            id: token(),
+            roots,
+            exclusions: Vec::new(),
+        };
         self.scope = Some(scope.clone());
         Ok(scope)
     }
@@ -268,6 +275,15 @@ impl ScanService {
         Ok(inspect(&data))
     }
 
+    pub fn location_path(&self, id: &str) -> BoundaryResult<std::path::PathBuf> {
+        lock(&self.authority)
+            .candidates
+            .iter()
+            .find(|candidate| candidate.location.id == id)
+            .map(|candidate| candidate.root.path.clone())
+            .ok_or_else(|| ErrorCode::InvalidScope.into())
+    }
+
     pub fn start(&self, scope_id: &str) -> BoundaryResult<Progress> {
         let mut authority = lock(&self.authority);
         authority.ensure_idle()?;
@@ -300,6 +316,15 @@ impl ScanService {
             }
             roots.push(candidate.root.try_clone()?);
         }
+        let exclusions = roots
+            .iter()
+            .flat_map(|root| {
+                scope
+                    .exclusions
+                    .iter()
+                    .map(|exclusion| (root.path.join(&exclusion.relative_path), exclusion.subtree))
+            })
+            .collect();
         authority.generation = authority
             .generation
             .checked_add(1)
@@ -320,7 +345,7 @@ impl ScanService {
             .name("reclaim-scan".into())
             .spawn(move || {
                 if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    scan::scan(roots, data, cancel)
+                    scan::scan_excluding(roots, exclusions, data, cancel)
                 }))
                 .is_err()
                 {
@@ -398,7 +423,7 @@ fn throttle(session: &mut Session) -> BoundaryResult<()> {
     Ok(())
 }
 
-fn authorize<R: Runtime>(window: &WebviewWindow<R>) -> BoundaryResult<()> {
+pub(crate) fn authorize<R: Runtime>(window: &WebviewWindow<R>) -> BoundaryResult<()> {
     if window.label() != "main" {
         return Err(ErrorCode::AccessDenied.into());
     }
@@ -466,9 +491,18 @@ pub async fn scan_register_scope<R: Runtime>(
     window: WebviewWindow<R>,
     state: State<'_, Arc<ScanService>>,
     location_ids: Vec<String>,
+    exclusions: Option<Vec<Exclusion>>,
 ) -> BoundaryResult<Scope> {
     authorize(&window)?;
-    lock(&state.authority).register(&location_ids)
+    let exclusions = exclusions.unwrap_or_default();
+    if exclusions.len() > 64 || !exclusions.iter().all(Exclusion::validate) {
+        return Err(ErrorCode::InvalidRequest.into());
+    }
+    let mut authority = lock(&state.authority);
+    let mut scope = authority.register(&location_ids)?;
+    scope.exclusions = exclusions;
+    authority.scope = Some(scope.clone());
+    Ok(scope)
 }
 
 #[tauri::command]
@@ -876,6 +910,60 @@ mod tests {
                 .unwrap_err()
                 .code,
             ErrorCode::InvalidRequest
+        );
+    }
+
+    #[test]
+    fn exclusions_preserve_recognition_and_shared_session_authority() {
+        let (temporary, service, mut scope) = fixture();
+        fs::write(
+            temporary.path().join("package.json"),
+            r#"{"name":"synthetic-project"}"#,
+        )
+        .unwrap();
+        fs::create_dir(temporary.path().join("node_modules")).unwrap();
+        fs::write(
+            temporary.path().join("node_modules/.package-lock.json"),
+            r#"{"lockfileVersion":3,"packages":{}}"#,
+        )
+        .unwrap();
+        fs::create_dir(temporary.path().join("cache")).unwrap();
+        fs::write(
+            temporary.path().join("cache/unvisited"),
+            b"excluded fixture",
+        )
+        .unwrap();
+        scope.exclusions = vec![Exclusion {
+            relative_path: "cache".into(),
+            subtree: true,
+        }];
+        lock(&service.authority).scope = Some(scope.clone());
+        let started = service.start(&scope.id).unwrap();
+        let progress = terminal(&service);
+        assert_eq!(progress.status, Status::Partial);
+        assert_eq!(
+            progress.current_location.as_deref(),
+            Some(scope.roots[0].display_path.as_str())
+        );
+        service
+            .with_terminal_scan(started.generation, |data| {
+                assert!(data.recognition.finished);
+                assert!(data.records.iter().any(|record| record.name == "cache"
+                    && record.finding.issue == Some(Issue::Excluded)));
+                assert!(!data.records.iter().any(|record| record.name == "unvisited"));
+            })
+            .unwrap();
+        let recognized = service
+            .recognition_page(started.generation, 0, scan::MAX_PAGE)
+            .unwrap();
+        assert!(recognized.finished);
+        assert!(!recognized.findings.is_empty());
+        assert!(recognized.findings.iter().all(|artifact| artifact
+            .finding_id
+            .starts_with(&format!("{}:", started.generation))));
+        assert_eq!(
+            fs::read(temporary.path().join("cache/unvisited")).unwrap(),
+            b"excluded fixture"
         );
     }
 

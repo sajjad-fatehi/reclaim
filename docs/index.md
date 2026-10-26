@@ -1,6 +1,6 @@
 # Documentation
 
-Reclaim has a working desktop shell, appearance controls and a read-only native scan producer. Product and feature specifications distinguish these implementations from pending scan UI/session orchestration and cleanup.
+Reclaim has a working desktop shell, appearance controls and a read-only native scan producer. First-run scope controls, shared scan-session orchestration and measured Overview consume those contracts; cleanup remains pending.
 
 - [Product context](../PRODUCT.md): confirmed users, purpose and constraints.
 - [Product direction](product.md): planned behavior, delivery stages and open decisions.
@@ -11,6 +11,7 @@ Reclaim has a working desktop shell, appearance controls and a read-only native 
 - [Desktop scaffold](specs/desktop-scaffold.md): scope, safety and verification evidence.
 - [Read-only scan foundation](specs/features/scan-foundation.md): implemented native authority, measurement, transport and fixture evidence.
 - [Specification template](specs/template.md): lightweight behavior and acceptance record.
+- [Overview and shared scan session](specs/features/overview-and-scope.md): settings, native persistence, session consumer contract and measured accounting.
 - [Application feature specifications](specs/features/index.md): complete approved feature scope, dependency contracts and delivery acceptance.
 - [Coding-agent rules](../AGENTS.md): concise repository-wide entry point.
 - [Contributing](../CONTRIBUTING.md): focused contributions, validation and branch flow.

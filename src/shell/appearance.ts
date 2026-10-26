@@ -22,20 +22,22 @@ export interface AppearanceState {
   changeAppearance: (preference: Appearance) => void;
 }
 
-export function useAppearance(): AppearanceState {
+export function useAppearance(override?: AppearanceState): AppearanceState {
   const [preference, setPreference] = useState<Appearance>(readAppearance);
   const [persistenceError, setPersistenceError] = useState(false);
+
+  const effectivePreference = override?.preference ?? preference;
 
   useEffect(() => {
     const query = window.matchMedia('(prefers-color-scheme: dark)');
     function applyAppearance(): void {
-      document.documentElement.dataset.appearance = preference;
+      document.documentElement.dataset.appearance = effectivePreference;
       document.documentElement.dataset.theme =
-        preference === 'system'
+        effectivePreference === 'system'
           ? query.matches
             ? 'dark'
             : 'light'
-          : preference;
+          : effectivePreference;
     }
     function receivePreference(event: StorageEvent): void {
       if (event.key === appearanceKey || event.key === null) {
@@ -50,7 +52,7 @@ export function useAppearance(): AppearanceState {
       query.removeEventListener('change', applyAppearance);
       window.removeEventListener('storage', receivePreference);
     };
-  }, [preference]);
+  }, [effectivePreference]);
 
   function changeAppearance(nextPreference: Appearance): void {
     setPreference(nextPreference);
@@ -62,5 +64,5 @@ export function useAppearance(): AppearanceState {
     }
   }
 
-  return { preference, persistenceError, changeAppearance };
+  return override ?? { preference, persistenceError, changeAppearance };
 }

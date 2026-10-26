@@ -15,6 +15,7 @@ reclaim-core = { version = "0.1.0", path = "../crates/reclaim-core" }
 serde = { version = "1.0.229", features = ["derive"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2.8.3"
+tempfile = "3.27.0"
 uuid = { version = "1.29.0", features = ["v4"] }
 
 [lints]
@@ -22,4 +23,3 @@ workspace = true
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
-tempfile = "3.27.0"

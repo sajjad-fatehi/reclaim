@@ -1,7 +1,7 @@
 //! Descriptor-anchored, metadata-only traversal. No file content is opened.
 
 use rustix::fs::{self, AtFlags, Dir, Mode, OFlags, Stat};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
@@ -61,6 +61,7 @@ mod bytes {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Issue {
+    Excluded,
     PermissionDenied,
     Vanished,
     Io,
@@ -133,6 +134,7 @@ pub struct Progress {
     pub generation: u32,
     pub status: Status,
     pub started_at_ms: u64,
+    pub current_location: Option<String>,
     pub finished_at_ms: Option<u64>,
     pub entries: usize,
     pub issue_count: usize,
@@ -157,6 +159,7 @@ impl ScanData {
                 generation,
                 status: Status::Running,
                 started_at_ms: now_ms(),
+                current_location: None,
                 finished_at_ms: None,
                 entries: 0,
                 issue_count: 0,
@@ -318,10 +321,44 @@ pub fn normalize_roots(mut roots: Vec<Root>) -> Vec<Root> {
     normalized
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Exclusion {
+    pub relative_path: String,
+    pub subtree: bool,
+}
+
+impl Exclusion {
+    pub fn validate(&self) -> bool {
+        let path = Path::new(&self.relative_path);
+        !self.relative_path.is_empty()
+            && self.relative_path.len() <= 1024
+            && !self.relative_path.chars().any(char::is_control)
+            && !path.is_absolute()
+            && self
+                .relative_path
+                .split('/')
+                .all(|part| !part.is_empty() && part != "." && part != "..")
+            && path
+                .components()
+                .all(|component| matches!(component, Component::Normal(_)))
+    }
+}
+
 pub fn scan(roots: Vec<Root>, data: Arc<Mutex<ScanData>>, cancel: Arc<AtomicBool>) {
+    scan_excluding(roots, Vec::new(), data, cancel);
+}
+
+pub fn scan_excluding(
+    roots: Vec<Root>,
+    exclusions: Vec<(PathBuf, bool)>,
+    data: Arc<Mutex<ScanData>>,
+    cancel: Arc<AtomicBool>,
+) {
     let mut scanner = Scanner {
         data,
         cancel,
+        exclusions,
         identities: HashMap::new(),
         ancestors: Vec::new(),
         entry_limit: MAX_ENTRIES,
@@ -331,6 +368,7 @@ pub fn scan(roots: Vec<Root>, data: Arc<Mutex<ScanData>>, cancel: Arc<AtomicBool
 }
 
 struct Scanner {
+    exclusions: Vec<(PathBuf, bool)>,
     data: Arc<Mutex<ScanData>>,
     cancel: Arc<AtomicBool>,
     identities: HashMap<(rustix::fs::Dev, u64), usize>,
@@ -344,6 +382,7 @@ impl Scanner {
         for root in roots {
             let metrics = volume(&root);
             let mut data = lock(&self.data);
+            data.progress.current_location = Some(display(root.path.as_os_str()));
             if !data
                 .progress
                 .volumes
@@ -564,6 +603,21 @@ impl Scanner {
         parent_index: usize,
         device: rustix::fs::Dev,
     ) {
+        let path = lock(&self.data)
+            .path(parent_index)
+            .map(|path| path.join(&name));
+        let excluded_subtree = path.as_ref().is_some_and(|path| {
+            self.exclusions.iter().any(|(excluded, subtree)| {
+                *subtree && (path == excluded || path.starts_with(excluded))
+            })
+        });
+        let excluded_exact = path
+            .as_ref()
+            .is_some_and(|path| self.exclusions.iter().any(|(excluded, _)| path == excluded));
+        if excluded_subtree {
+            self.insert(name, Some(parent_index), None, Some(Issue::Excluded));
+            return;
+        }
         let before = match fs::statat(parent, &name, AtFlags::SYMLINK_NOFOLLOW) {
             Ok(metadata) => metadata,
             Err(error) => {
@@ -576,6 +630,10 @@ impl Scanner {
                 return;
             }
         };
+        if excluded_exact && kind(&before) != Kind::Directory {
+            self.insert(name, Some(parent_index), None, Some(Issue::Excluded));
+            return;
+        }
         let boundary = before.st_dev != device;
         let Some(index) = self.insert(
             name.clone(),
@@ -664,6 +722,45 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
         );
         data
+    }
+
+    #[test]
+    fn exclusions_are_literal_bounded_and_do_not_follow_or_measure_skipped_entries() {
+        for invalid in ["", "/tmp", "../secret", "a/../b", "a/./b", "a//b", "a\n"] {
+            assert!(!Exclusion {
+                relative_path: invalid.into(),
+                subtree: true
+            }
+            .validate());
+        }
+        let (_temporary, path) = fixture();
+        fs::create_dir(path.join("cache")).unwrap();
+        fs::write(path.join("cache/hidden"), b"excluded").unwrap();
+        fs::create_dir(path.join("exact-directory")).unwrap();
+        fs::write(path.join("exact-directory/kept"), b"12345").unwrap();
+        fs::write(path.join("skip"), b"excluded").unwrap();
+        let data = Arc::new(Mutex::new(ScanData::new(1)));
+        scan_excluding(
+            vec![Root::open(&path).unwrap()],
+            vec![
+                (path.join("cache"), true),
+                (path.join("skip"), false),
+                (path.join("exact-directory"), false),
+            ],
+            data.clone(),
+            Arc::new(AtomicBool::new(false)),
+        );
+        let data = lock(&data);
+        assert_eq!(data.progress.logical_bytes, 5);
+        assert_eq!(data.progress.status, Status::Partial);
+        assert_eq!(
+            data.records
+                .iter()
+                .filter(|record| record.finding.issue == Some(Issue::Excluded))
+                .count(),
+            2
+        );
+        assert!(!data.records.iter().any(|record| record.name == "hidden"));
     }
 
     #[test]
@@ -808,6 +905,7 @@ mod tests {
 
     fn scanner(entry_limit: usize, depth_limit: usize) -> Scanner {
         Scanner {
+            exclusions: Vec::new(),
             data: Arc::new(Mutex::new(ScanData::new(2))),
             cancel: Arc::new(AtomicBool::new(false)),
             identities: HashMap::new(),

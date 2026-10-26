@@ -30,7 +30,7 @@ Users investigate storage pressure and broad operating-system storage categories
 
 ## Capabilities and Constraints
 
-- Implemented shell destinations: Overview, Explore, Development, and Review & Clean, with Settings. Their scan and cleanup UI remains unimplemented; appearance settings work locally. The native read-only scan producer is implemented independently of these views.
+- The shell exposes Overview, Explore, Development, Review & Clean and Settings. First-run scope controls, measured Overview and one shared scan session consume the native read-only producer. Appearance and scan settings share validated native local preferences. Explore, Development and cleanup views remain pending.
 - Development has related project and tool views; shared usage must not be counted twice.
 - On first use, show suggested scan locations for review and editing. Scanning starts only after the user explicitly starts it.
 - Show scan coverage, inaccessible locations and unknown usage; never portray partial coverage as complete.
@@ -40,7 +40,7 @@ Users investigate storage pressure and broad operating-system storage categories
 - Initial sequence: read-only exploration, a small evidence-driven set of recognizers, then limited explainable cleanup.
 - Duplicate detection, app uninstalling, RAM cleaning and automatic cleanup are deferred.
 - Product copy and repository documentation are English only initially.
-- Application implementation is authorized. The desktop shell, appearance, navigation, shared presentation primitives and native read-only scan producer are implemented. Scan UI/session orchestration and cleanup remain separate feature tasks.
+- Application implementation is authorized. The shell, native read-only scanner, first-run scanning, shared session, native preferences and measured Overview are implemented. Explore, Development and cleanup remain separate feature tasks.
 
 ## Brand Commitments
 
@@ -52,7 +52,7 @@ The user's latest visual brief replaces the former Space Layers aesthetic: warm,
 
 ## Evidence on Hand
 
-The repository began with its MIT license and now includes a Rust/Tauri/React scaffold and working desktop shell. Existing local reference script: `~/bin/reclaim`, a macOS development-artifact cleanup script outside this repository. Its commands are not an approved deletion policy. Product decisions are recorded in shared project notes. Shell acceptance and native evidence are recorded in [the shell specification](docs/specs/features/application-shell.md). The [scan foundation](docs/specs/features/scan-foundation.md) records implemented native scope grants, bounded read-only measurement, cancellation, transport and isolated fixture evidence; it is not yet connected to production scan views. No user-data scan results are claimed.
+The repository began with its MIT license and now includes a Rust/Tauri/React scaffold and working desktop shell. Existing local reference script: `~/bin/reclaim`, a macOS development-artifact cleanup script outside this repository. Its commands are not an approved deletion policy. Product decisions are recorded in shared project notes. Shell acceptance and native evidence are recorded in [the shell specification](docs/specs/features/application-shell.md). The [scan foundation](docs/specs/features/scan-foundation.md) records implemented native scope grants, bounded read-only measurement, cancellation, transport and isolated fixture evidence; it now feeds the production Overview through the shared scan provider. The [Overview contract](docs/specs/features/overview-and-scope.md) records settings/session ownership and native synthetic-fixture evidence. No user-data scan results are claimed.
 
 ## Product Principles
 
@@ -64,4 +64,4 @@ The repository began with its MIT license and now includes a Rust/Tauri/React sc
 
 ## Open Decisions
 
-The latest warm CleanMyMac-inspired direction supersedes the earlier Space Layers aesthetic. Design specifications live in [docs/design/index.md](docs/design/index.md). The built shell system is recorded in [DESIGN.md](DESIGN.md), with acceptance and explicit evidence limits in the shell specification. Planned scan UI and cleanup capabilities are not claims about the current shell; the implemented native producer has its own verified contract.
+The latest warm CleanMyMac-inspired direction supersedes the earlier Space Layers aesthetic. Design specifications live in [docs/design/index.md](docs/design/index.md). The built shell system is recorded in [DESIGN.md](DESIGN.md), with acceptance and explicit evidence limits in the shell specification. The [measured Overview and shared session](docs/specs/features/overview-and-scope.md) are implemented and documented; Explore, Development and cleanup remain planned. The native producer retains its own verified contract.

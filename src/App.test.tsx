@@ -30,7 +30,9 @@ test('announces metadata returned by the desktop runtime', async (): Promise<voi
   vi.mocked(getVersion).mockResolvedValue('0.2.3');
 
   render(<App />);
-  expect(screen.getByRole('status').textContent).toContain('Connecting');
+  expect(
+    screen.getByText('Connecting to the desktop app…').getAttribute('role'),
+  ).toBe('status');
   await screen.findByText('Reclaim 0.2.3 · Desktop connected');
 });
 
