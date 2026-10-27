@@ -1234,3 +1234,225 @@ tr[data-selected='true'] .artifact-chip {
   font-weight: 600;
   color: var(--accent);
 }
+
+/* Review & Clean. */
+.review-header h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  line-height: 1.15;
+  margin: 0;
+}
+.review-header p {
+  margin: var(--space-hairline) 0 0;
+}
+.review-section {
+  display: grid;
+  gap: var(--space-medium);
+  align-content: start;
+}
+.review-section > h2,
+.review-section > p {
+  margin: 0;
+}
+.review-selection,
+.outcome-list,
+.basket,
+.history-operation ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-small);
+}
+.review-selection > li.review-card,
+.outcome-card,
+.history-operation,
+.basket-item {
+  padding: var(--space-medium) 20px;
+  background: var(--glass);
+  backdrop-filter: var(--blur-glass);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-tile);
+  border-inline-start-width: 5px;
+}
+.review-card.is-eligible,
+.outcome-removed {
+  border-inline-start-color: var(--success);
+}
+.review-card.is-changed,
+.outcome-changed,
+.outcome-skipped,
+.outcome-unknown,
+.outcome-pending {
+  border-inline-start-color: var(--warning);
+}
+.review-card.is-unavailable {
+  border-inline-start-color: var(--boundary);
+}
+.outcome-failed {
+  border-inline-start-color: var(--danger);
+}
+.review-card p,
+.outcome-card p {
+  margin: var(--space-hairline) 0 0;
+}
+.review-facts {
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--space-large);
+  row-gap: var(--space-hairline);
+  margin-block: var(--space-small);
+}
+.review-facts dd {
+  margin: 0;
+}
+.review-availability {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-small);
+}
+.review-alert {
+  padding: var(--space-small) var(--space-medium);
+  border-radius: var(--radius-control);
+  background: var(--warning-surface);
+  color: var(--warning);
+  font-weight: 600;
+}
+.outcome-heading,
+.history-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-small) var(--space-medium);
+  justify-content: space-between;
+}
+.history-item {
+  justify-content: flex-start;
+}
+.history-item p {
+  flex-basis: 100%;
+}
+.outcome-badge,
+.reversibility,
+.outcome-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: var(--text-small);
+  font-weight: 700;
+}
+.outcome-badge {
+  padding: 0.15rem 0.65rem;
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  border: 1px solid currentColor;
+}
+.outcome-badge.outcome-removed,
+.reversibility.reversible {
+  color: var(--success);
+}
+.outcome-badge.outcome-failed,
+.reversibility.permanent {
+  color: var(--danger);
+}
+.outcome-badge.outcome-changed,
+.outcome-badge.outcome-skipped,
+.outcome-badge.outcome-unknown,
+.outcome-badge.outcome-pending {
+  color: var(--warning);
+}
+.outcome-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-small) var(--space-medium);
+  align-items: center;
+}
+.outcome-count strong {
+  font-family: var(--font-display);
+  font-size: var(--text-subtitle);
+}
+.basket-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-hairline) var(--space-medium);
+  padding: 12px var(--space-medium);
+}
+.basket-size {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+.basket-method {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-small);
+  align-items: center;
+  color: var(--secondary);
+  font-size: var(--text-small);
+}
+.basket-item p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--text-small);
+  color: var(--secondary);
+}
+.dialog-lead {
+  margin: 0 0 var(--space-medium);
+}
+.dialog-footnote {
+  font-size: var(--text-small);
+}
+.acknowledgement {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-block: var(--space-medium) var(--space-small);
+  padding: 12px var(--space-medium);
+  border-radius: var(--radius-control);
+  background: var(--warning-surface);
+  color: var(--warning);
+  font-weight: 600;
+}
+.acknowledgement:has(input:focus-visible) {
+  outline: 3px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.dialog .toolbar {
+  justify-content: flex-end;
+  gap: var(--space-medium);
+  margin: var(--space-large) 0 0;
+}
+.danger-action {
+  background: var(--danger-surface);
+  color: var(--on-danger);
+  border-color: transparent;
+}
+.danger-action:hover:not(:disabled) {
+  background: var(--danger-surface);
+  color: var(--on-danger);
+  filter: brightness(1.1);
+}
+.review-card.is-eligible .review-availability {
+  color: var(--success);
+}
+.history-operation {
+  display: grid;
+  gap: var(--space-small);
+}
+.history-operation h3,
+.history-operation p,
+.history-item p {
+  margin: 0;
+}
+.history-item {
+  padding-block: var(--space-small);
+  border-top: 1px solid var(--divider);
+}
+.review-card.is-changed .review-availability {
+  color: var(--warning);
+}
+.review-card.is-unavailable .review-availability {
+  color: var(--secondary);
+}
