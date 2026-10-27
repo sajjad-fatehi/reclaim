@@ -301,7 +301,6 @@ main {
 .glass-panel,
 .notice,
 .settings-content,
-.scan-results,
 .development-detail,
 .inspector {
   background: var(--glass);
@@ -711,85 +710,9 @@ main {
   justify-content: center;
   gap: var(--space-small);
 }
-.scan-phase {
-  color: var(--accent);
-  font-weight: 600;
-}
-.scan-results {
-  border-radius: var(--radius-panel);
-  background: var(--surface);
-  padding: var(--space-large);
-  box-shadow: var(--shadow-panel);
-}
-.results-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--space-small);
-}
-.volume-usage h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-.volume-usage {
-  padding-block: var(--space-medium);
-}
-.usage-strip {
-  display: flex;
-  min-height: 24px;
-  border-radius: var(--radius-control);
-  overflow: hidden;
-  margin-block: var(--space-medium);
-}
-.segment-measured {
-  background: var(--accent);
-}
-.segment-unknown {
-  background: var(--boundary);
-}
-.segment-free {
-  background: var(--raised);
-}
-.volume-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-medium) var(--space-large);
-  margin: 0 0 var(--space-small);
-}
-.volume-legend dt {
-  color: var(--secondary);
-}
-.volume-legend dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-.scan-results summary {
-  cursor: pointer;
-  padding-block: 10px;
-}
 .investigation-handoff {
   display: grid;
   gap: var(--space-large);
-}
-.category-0 {
-  background: var(--accent);
-}
-.category-1 {
-  background: var(--chart-build);
-}
-.category-2 {
-  background: var(--chart-docker);
-}
-.category-3 {
-  background: var(--chart-stores);
-}
-.category-swatch {
-  display: inline-block;
-  width: 0.75rem;
-  height: 0.75rem;
-  border-radius: 2px;
-  margin-right: var(--space-small);
 }
 
 .explore-layout {
