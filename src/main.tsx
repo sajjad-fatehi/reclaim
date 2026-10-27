@@ -47,6 +47,18 @@ async function renderApplication(rootContainer: HTMLElement): Promise<void> {
     );
     return;
   }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(location.search).get('fixture') === 'cleanup'
+  ) {
+    const { CleanupFixture } = await import('./cleanup/CleanupFixture');
+    createRoot(rootContainer).render(
+      <StrictMode>
+        <CleanupFixture />
+      </StrictMode>,
+    );
+    return;
+  }
   createRoot(rootContainer).render(
     <StrictMode>
       <App />
