@@ -1381,8 +1381,6 @@ tr[data-selected='true'] .artifact-chip {
   color: var(--secondary);
 }
 
-
-
 /* Explore and item inspector (Atlas direction). */
 .explore-layout {
   align-items: stretch;
