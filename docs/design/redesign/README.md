@@ -142,6 +142,17 @@ Contrast was computed from the declared tokens (WCAG relative luminance): body t
 
 Choose **C · Atlas** as the visual direction, with two borrowings. It is the only direction that meaningfully answers "ugly" and the stated wish for expressive motion, and the spatial model fits the product question (where did space go, which path owns it). Keep **B's** table with arrow-key navigation as Explore's default dense list and its shortcut layer, and keep **A's** conservative confirmation behavior (Cancel focused, explicit acknowledgement, sheet-like dialog). If build cost or accessibility risk is the priority over delight, choose **A**; it is the safest path and still a clear improvement. **B** is best as a later "pro density" mode rather than the first impression.
 
+## Chosen direction
+
+Decided by the user on 2026-10-27: **C · Atlas**, with these borrowings.
+
+- **From C:** visual language, palette, typography, motion, floating pill navigation, sunburst Overview, and treemap Explore with a floating inspector. Hatched outside-scope and unrecognized areas stay in every chart.
+- **From B:** the **Needs attention** panel on Overview (access required, worktrees with uncommitted changes, Docker volumes, large recognized items), which replaces C's bottom cards. Also B's dense table with arrow-key navigation as Explore's list mode, and its keyboard shortcut layer.
+- **From A:** conservative cleanup confirmation, with Cancel focused initially, an explicit acknowledgement for irreversible removal and a sheet-like dialog.
+- **Not chosen:** A's translucent sidebar shell and B's icon rail and monospace console styling.
+
+The mockups use different sample totals (B shows 787.2 GB used and A/C show 812.3 GB). Treat that as a mockup artifact; real values come from the scan session.
+
 ## Implementation notes for the next task
 
 - Tokens above map to CSS custom properties in `src/shell/tokens.css`; chart fills and tile fills are separate token sets so text contrast and graphic contrast can be tuned independently.
