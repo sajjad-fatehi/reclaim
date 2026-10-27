@@ -24,7 +24,7 @@ Do not reorder rows continuously while the user is interacting. Offer an explici
 ## Review and cleanup
 
 1. Add only supported findings to review; unsupported items retain inspection actions.
-2. Explain the intended cleanup method and consequence for each item. A supported tool-owned prune operation may differ from deleting a directory.
+2. Explain the intended cleanup method and consequence for each item. A supported tool-owned removal operation differs from moving a directory to Trash.
 3. Immediately before execution, revalidate identity, permissions, relevant activity and safety conditions. A renamed, changed or missing target does not inherit stale consent; mark it changed and require a new review where needed.
 4. Present a confirmation naming the affected selection and whether the operation is reversible. Initial focus is Cancel; Enter must not accidentally confirm an irreversible operation.
 5. During execution, disable repeat submission and report item-level progress. Cancellation stops future work where supported; it does not promise to undo completed work or interrupt an unsafe-to-interrupt operation.
@@ -32,7 +32,12 @@ Do not reorder rows continuously while the user is interacting. Offer an explici
 
 Record measured free-space change when available, with its limitations. Concurrent disk activity means the difference is not automatically attributable to this cleanup. Do not relabel selected folder sizes as recovered space. Recovery controls appear only for operations with a real recovery mechanism.
 
-Cleanup UI is future work. No specification authorizes executing destructive commands against the user's real files.
+Limited cleanup now uses native single-use plans, separate Cancel-focused confirmation,
+immediate revalidation and platform Trash or a distinct non-force tool operation.
+Concurrent changes between checks and the operation remain possible. Trash recovery
+uses macOS Trash where available; irreversible tool operations require acknowledgement.
+Cancellation stops pending items only. Verification uses disposable fixtures and
+stubbed Docker; never the user's real files.
 
 ## State matrix
 

@@ -8,6 +8,7 @@ import type { Inspection, InspectionApi } from './contract';
 import { measurementStatus } from './model';
 import type { DockerItem } from '../development/contract';
 import { DockerDetails } from '../development/DockerDetails';
+import { ReviewButton } from '../cleanup/ReviewButton';
 
 export interface ItemInspectorProps {
   finding: Finding | null;
@@ -54,6 +55,16 @@ export function ItemInspector(props: ItemInspectorProps): ReactElement {
           <DockerDetails
             item={props.dockerItem}
             measuredAtMs={props.dockerMeasuredAtMs ?? null}
+          />
+          <ReviewButton
+            candidate={
+              props.dockerItem.kind === 'image' &&
+              props.dockerItem.references === 0
+            }
+            selection={{
+              source: 'docker',
+              findingId: props.dockerItem.artifact.findingId,
+            }}
           />
         </div>
       )}
@@ -138,6 +149,19 @@ function InspectorContent({
             Finding {finding.id} · generation {generation}
           </p>
           <Toolbar label="Item actions">
+            <ReviewButton
+              candidate={
+                details?.recognizedAtId === finding.id &&
+                !!artifact &&
+                (artifact.regenerable || artifact.nature === 'worktree')
+              }
+              disabled={stale || !settled}
+              selection={{
+                source: 'filesystem',
+                generation,
+                findingId: finding.id,
+              }}
+            />
             <button
               disabled={busy || stale || finding.kind === 'symlink'}
               onClick={() => void perform('reveal')}
@@ -252,9 +276,9 @@ function InspectorContent({
               'Removal consequences unknown. This may contain source, personal or persistent data. Inspection does not authorize removal.'}
           </p>
           <p>
-            Inspection only. No cleanup action available here. Modification time
-            does not prove inactivity; growth history and physical recovery are
-            unknown.
+            Inspection only. Review cleanup options explains native eligibility;
+            selection does not authorize removal. Modification time does not
+            prove inactivity; growth history and physical recovery are unknown.
           </p>
         </>
       )}

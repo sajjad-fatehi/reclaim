@@ -30,7 +30,7 @@ Users investigate storage pressure and broad operating-system storage categories
 
 ## Capabilities and Constraints
 
-- The shell exposes Overview, Explore, Development, Review & Clean and Settings. First-run scope controls, measured Overview and one shared scan session consume the native read-only producer. Appearance and scan settings share validated native local preferences. Explore, Development and cleanup views remain pending.
+- The shell exposes Overview, Explore, Development, Review & Clean and Settings. First-run scope controls, measured Overview and one shared scan session consume the native read-only producer. Appearance and scan settings share validated native local preferences. Explore and Development are integrated. Limited cleanup now uses native plans, separate confirmation, immediate revalidation and Trash or narrowly supported tool removal.
 - Development has related project and tool views; shared usage must not be counted twice.
 - On first use, show suggested scan locations for review and editing. Scanning starts only after the user explicitly starts it.
 - Show scan coverage, inaccessible locations and unknown usage; never portray partial coverage as complete.
@@ -40,7 +40,7 @@ Users investigate storage pressure and broad operating-system storage categories
 - Initial sequence: read-only exploration, a small evidence-driven set of recognizers, then limited explainable cleanup.
 - Duplicate detection, app uninstalling, RAM cleaning and automatic cleanup are deferred.
 - Product copy and repository documentation are English only initially.
-- Application implementation is authorized. The shell, native read-only scanner, first-run scanning, shared session, native preferences and measured Overview are implemented. Explore, Development and cleanup remain separate feature tasks.
+- Application implementation is authorized. The shell, native read-only scanner, first-run scanning, shared session, native preferences and measured Overview are implemented. Explore, Development and limited cleanup are implemented; verification and method limits remain explicit in their feature specifications.
 
 ## Brand Commitments
 
@@ -64,4 +64,4 @@ The repository began with its MIT license and now includes a Rust/Tauri/React sc
 
 ## Open Decisions
 
-The latest warm CleanMyMac-inspired direction supersedes the earlier Space Layers aesthetic. Design specifications live in [docs/design/index.md](docs/design/index.md). The built shell system is recorded in [DESIGN.md](DESIGN.md), with acceptance and explicit evidence limits in the shell specification. The [measured Overview and shared session](docs/specs/features/overview-and-scope.md) are implemented and documented; Explore, Development and cleanup remain planned. The native producer retains its own verified contract.
+The latest warm CleanMyMac-inspired direction supersedes the earlier Space Layers aesthetic. Design specifications live in [docs/design/index.md](docs/design/index.md). The built shell system is recorded in [DESIGN.md](DESIGN.md), with acceptance and explicit evidence limits in the shell specification. The [measured Overview and shared session](docs/specs/features/overview-and-scope.md) are implemented and documented; Explore and Development consume that session; [limited cleanup](docs/specs/features/review-and-cleanup.md) adds confirmed native removal and bounded private history. Cleanup has real disposable Trash proof and synthetic native captures; live Docker destructive compatibility and VoiceOver speech are not claimed. The native producer retains its own verified contract.

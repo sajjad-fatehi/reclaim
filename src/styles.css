@@ -960,3 +960,32 @@ input[type='checkbox'] {
 .development-layout .row-actions {
   flex-wrap: wrap;
 }
+
+.cleanup-review {
+  display: grid;
+  gap: var(--space-section);
+}
+.review-selection {
+  list-style: none;
+  padding: 0;
+}
+.review-selection > li,
+.history-operation {
+  padding-block: var(--space-large);
+  border-bottom: 1px solid var(--divider);
+}
+.review-target-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-small);
+}
+.review-target-heading h3 {
+  margin: 0;
+  flex: 1 1 24rem;
+}
+.review-availability {
+  font-weight: 600;
+  color: var(--accent);
+}

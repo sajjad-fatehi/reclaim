@@ -1,7 +1,7 @@
 import { Info } from '@phosphor-icons/react/Info';
 import { X } from '@phosphor-icons/react/X';
 import { useEffect, useId, useRef, useState } from 'react';
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactElement, ReactNode, RefObject } from 'react';
 import { usePanelMotion } from './motion';
 
 export function Toolbar({
@@ -82,16 +82,23 @@ export function Dialog({
   onClose,
   children,
   placement = 'center',
-}: PanelProps & { placement?: 'center' | 'edge' }): ReactElement {
+  initialFocus,
+}: PanelProps & {
+  placement?: 'center' | 'edge';
+  initialFocus?: RefObject<HTMLElement | null>;
+}): ReactElement {
   const reference = useRef<HTMLDialogElement>(null);
   const headingId = useId();
   usePanelMotion(reference, open, placement === 'edge' ? 'edge' : 'view');
   useEffect(() => {
     const dialog = reference.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
+    if (open && !dialog.open) {
+      dialog.showModal();
+      initialFocus?.current?.focus();
+    }
     if (!open && dialog.open) dialog.close();
-  }, [open]);
+  }, [open, initialFocus]);
   return (
     <dialog
       className={placement === 'edge' ? 'dialog inspector-sheet' : 'dialog'}

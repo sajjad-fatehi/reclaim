@@ -1134,4 +1134,235 @@ mod tests {
     }
 }
 
+pub(crate) mod cleanup;
 pub mod explore;
+
+#[cfg(test)]
+pub(crate) mod cleanup_review_tests {
+    use super::*;
+    use crate::cleanup::{CleanupService, Selection};
+    use crate::docker::DockerService;
+    use std::fs;
+    use std::os::unix::fs::symlink;
+
+    pub(crate) fn rescan(scanner: &ScanService) -> u32 {
+        let scope = lock(&scanner.authority).scope.as_ref().unwrap().id.clone();
+        let generation = scanner.start(&scope).unwrap().generation;
+        super::tests::terminal(scanner);
+        generation
+    }
+
+    pub(crate) fn fixture() -> (tempfile::TempDir, Arc<ScanService>, u32) {
+        let temporary = tempfile::tempdir().unwrap();
+        fs::create_dir(temporary.path().join("node_modules")).unwrap();
+        fs::write(
+            temporary.path().join("package.json"),
+            br#"{"name":"SYNTHETIC"}"#,
+        )
+        .unwrap();
+        fs::write(
+            temporary.path().join("node_modules/.package-lock.json"),
+            br#"{"lockfileVersion":3,"packages":{}}"#,
+        )
+        .unwrap();
+        fs::write(temporary.path().join("source.rs"), b"source sentinel").unwrap();
+        fs::write(temporary.path().join(".env"), b"secret sentinel").unwrap();
+        fs::create_dir(temporary.path().join("target")).unwrap();
+        fs::write(
+            temporary.path().join("Cargo.toml"),
+            "[package]\nname = \"synthetic\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        fs::write(
+            temporary.path().join("target/.rustc_info.json"),
+            br#"{"rustc_fingerprint":123}"#,
+        )
+        .unwrap();
+        let service = Arc::new(ScanService::default());
+        let location = service.register_native_location(temporary.path()).unwrap();
+        let scope = lock(&service.authority).register(&[location.id]).unwrap();
+        let generation = service.start(&scope.id).unwrap().generation;
+        super::tests::terminal(&service);
+        (temporary, service, generation)
+    }
+
+    pub(crate) fn select(scanner: &ScanService, generation: u32, name: &str) -> Selection {
+        let finding_id = scanner
+            .with_terminal_scan(generation, |data| {
+                data.records
+                    .iter()
+                    .find(|record| record.name == name)
+                    .unwrap()
+                    .finding
+                    .id
+                    .clone()
+            })
+            .unwrap();
+        Selection::Filesystem {
+            generation,
+            finding_id,
+        }
+    }
+
+    #[test]
+    fn cleanup_review_fails_closed_for_recognized_source_secret_and_overlap() {
+        let (temporary, scanner, generation) = fixture();
+        let cleanup = CleanupService::default();
+        let docker = DockerService::default();
+        let dependency = select(&scanner, generation, "node_modules");
+        let report = cleanup
+            .review(
+                &scanner,
+                &docker,
+                vec![
+                    dependency.clone(),
+                    dependency,
+                    select(&scanner, generation, "source.rs"),
+                    select(&scanner, generation, ".env"),
+                    select(&scanner, generation, ".package-lock.json"),
+                ],
+            )
+            .unwrap();
+        assert_eq!(report.items.len(), 4);
+        assert_eq!(
+            report.items[0].method,
+            Some(reclaim_core::cleanup::Method::Trash)
+        );
+        assert!(report.plan_id.is_some());
+        assert!(report
+            .items
+            .iter()
+            .all(|item| !item.unavailable_reason.is_empty()));
+        assert!(
+            report.items[3].artifact.is_none(),
+            "descendants must not inherit eligibility"
+        );
+        assert_eq!(
+            fs::read(temporary.path().join("source.rs")).unwrap(),
+            b"source sentinel"
+        );
+        assert_eq!(
+            fs::read(temporary.path().join(".env")).unwrap(),
+            b"secret sentinel"
+        );
+        assert!(temporary
+            .path()
+            .join("node_modules/.package-lock.json")
+            .exists());
+        let mut artifact = report.items[0].artifact.clone().unwrap();
+        use reclaim_core::recognition::{ChangeState, Worktree};
+        for changes in [
+            ChangeState::Dirty,
+            ChangeState::Untracked,
+            ChangeState::Ignored,
+            ChangeState::Unknown,
+            ChangeState::Clean,
+        ] {
+            for (main, locked) in [(true, false), (false, true), (false, false)] {
+                artifact.worktree = Some(Worktree {
+                    repository_id: None,
+                    metadata_id: None,
+                    branch: None,
+                    main,
+                    detached: false,
+                    locked,
+                    changes,
+                });
+                let reason = reclaim_core::cleanup::filesystem_unavailability(Some(&artifact));
+                assert!(!reason.is_empty());
+                if locked && !main {
+                    assert!(reason.contains("locked"));
+                }
+                if !main && !locked && changes != ChangeState::Clean {
+                    assert!(reason.contains("changes"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cleanup_review_rejects_forged_stale_unobserved_and_oversized_requests() {
+        let (_temporary, scanner, generation) = fixture();
+        let cleanup = CleanupService::default();
+        let docker = DockerService::default();
+        for finding_id in ["/outside/sentinel", "../source", "1:999999"] {
+            assert!(cleanup
+                .review(
+                    &scanner,
+                    &docker,
+                    vec![Selection::Filesystem {
+                        generation,
+                        finding_id: finding_id.into()
+                    }]
+                )
+                .is_err());
+        }
+        assert!(cleanup
+            .review(
+                &scanner,
+                &docker,
+                vec![Selection::Docker {
+                    finding_id: format!("docker:Image:sha256:{}", "a".repeat(64))
+                }]
+            )
+            .is_err());
+        assert!(cleanup
+            .review(
+                &scanner,
+                &docker,
+                vec![Selection::Filesystem {
+                    generation: generation + 1,
+                    finding_id: format!("{generation}:0")
+                }]
+            )
+            .is_err());
+        assert!(cleanup.review(&scanner, &docker, Vec::new()).is_err());
+        assert!(cleanup
+            .review(
+                &scanner,
+                &docker,
+                vec![select(&scanner, generation, "node_modules"); 101]
+            )
+            .is_err());
+        assert!(serde_json::from_value::<Selection>(serde_json::json!({"source":"filesystem","generation":generation,"findingId":"1:0","path":"/outside","force":true})).is_err());
+    }
+
+    #[test]
+    fn cleanup_review_detects_target_and_ancestor_substitution_without_touching_sentinels() {
+        let (temporary, scanner, generation) = fixture();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("sentinel"), b"outside").unwrap();
+        let cleanup = CleanupService::default();
+        let docker = DockerService::default();
+        let target = select(&scanner, generation, "node_modules");
+        let child = select(&scanner, generation, ".package-lock.json");
+        fs::rename(
+            temporary.path().join("node_modules"),
+            temporary.path().join("original"),
+        )
+        .unwrap();
+        symlink(outside.path(), temporary.path().join("node_modules")).unwrap();
+        for selection in [target, child] {
+            let report = cleanup.review(&scanner, &docker, vec![selection]).unwrap();
+            assert!(report.items[0].changed);
+        }
+        assert_eq!(
+            fs::read(outside.path().join("sentinel")).unwrap(),
+            b"outside"
+        );
+        fs::remove_file(temporary.path().join("node_modules")).unwrap();
+        fs::create_dir(temporary.path().join("node_modules")).unwrap();
+        let report = cleanup
+            .review(
+                &scanner,
+                &docker,
+                vec![select(&scanner, generation, "node_modules")],
+            )
+            .unwrap();
+        assert!(report.items[0].changed);
+        assert!(temporary
+            .path()
+            .join("original/.package-lock.json")
+            .exists());
+    }
+}

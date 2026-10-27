@@ -16,7 +16,7 @@ pub struct Inspection {
     pub recognized_at_id: Option<String>,
 }
 
-fn resolve(data: &ScanData, finding_id: &str) -> BoundaryResult<usize> {
+pub(super) fn resolve(data: &ScanData, finding_id: &str) -> BoundaryResult<usize> {
     if finding_id.len() > 64 {
         return Err(ErrorCode::InvalidRequest.into());
     }
@@ -43,7 +43,7 @@ fn check_identity(record: &Record, metadata: &rustix::fs::Stat) -> BoundaryResul
 }
 
 /// Check every ancestor by descriptor; never follow a replaced ancestor or final symlink.
-fn validate_target(
+pub(super) fn validate_target(
     data: &ScanData,
     index: usize,
     authorized_roots: &[PathBuf],
