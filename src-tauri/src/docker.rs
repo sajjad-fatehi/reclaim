@@ -6,6 +6,7 @@ use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{State, WebviewWindow};
 
@@ -16,6 +17,7 @@ const BUDGET: Duration = Duration::from_secs(20);
 pub struct DockerService {
     busy: AtomicBool,
     cancelled: AtomicBool,
+    observations: Mutex<Option<(u64, Vec<reclaim_core::docker::Item>)>>,
 }
 
 #[derive(Serialize)]
@@ -248,16 +250,29 @@ impl DockerService {
                 &home,
             )
         })();
+        let measured_at_ms = reclaim_core::scan::now_ms();
+        *reclaim_core::scan::lock(&self.observations) = result
+            .as_ref()
+            .ok()
+            .map(|inventory| (measured_at_ms, inventory.items.clone()));
         self.busy.store(false, Ordering::SeqCst);
-        let measured_at_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-            .to_string();
         Ok(Snapshot {
-            measured_at_ms,
+            measured_at_ms: measured_at_ms.to_string(),
             result,
         })
+    }
+
+    pub(crate) fn observed_item(
+        &self,
+        finding_id: &str,
+    ) -> Option<(u64, reclaim_core::docker::Item)> {
+        let observations = reclaim_core::scan::lock(&self.observations);
+        let (measured_at_ms, items) = observations.as_ref()?;
+        items
+            .iter()
+            .find(|item| item.artifact.finding_id == finding_id)
+            .cloned()
+            .map(|item| (*measured_at_ms, item))
     }
 }
 

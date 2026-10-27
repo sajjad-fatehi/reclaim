@@ -32,7 +32,11 @@ Do not reorder rows continuously while the user is interacting. Offer an explici
 
 Record measured free-space change when available, with its limitations. Concurrent disk activity means the difference is not automatically attributable to this cleanup. Do not relabel selected folder sizes as recovered space. Recovery controls appear only for operations with a real recovery mechanism.
 
-Cleanup UI is future work. No specification authorizes executing destructive commands against the user's real files.
+Eligibility review and local history are implemented as a partial delivery. All
+removal methods remain unavailable: selection opens explanations, never an
+executable cleanup plan. Confirmation, actual removal, execution cancellation and
+recovery remain unmet requirements. Verification never executes destructive
+commands against the user's real files.
 
 ## State matrix
 

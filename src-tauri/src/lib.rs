@@ -2,6 +2,8 @@
 
 pub mod scan;
 
+pub mod cleanup;
+mod cleanup_history;
 pub mod docker;
 pub mod preferences;
 

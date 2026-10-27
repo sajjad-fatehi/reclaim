@@ -9,17 +9,47 @@ import type { InspectionApi } from '../explore/contract';
 import { useScanSession } from './useScanSession';
 import { Overview } from './Overview';
 import { ScanSettings } from './ScanSettings';
+import { ReviewProvider } from '../cleanup/ReviewProvider';
+import { Review } from '../cleanup/Review';
+import { useReview } from '../cleanup/useReview';
+import type { CleanupApi } from '../cleanup/contract';
 
 export function ScanApplication({
   connectionStatus,
   inspectionApi,
   developmentApi,
+  cleanupApi,
 }: {
   connectionStatus: string;
   inspectionApi?: InspectionApi | undefined;
   developmentApi?: DevelopmentApi | undefined;
+  cleanupApi?: CleanupApi | undefined;
+}): ReactElement {
+  return (
+    <ReviewProvider>
+      <ScanApplicationContent
+        connectionStatus={connectionStatus}
+        inspectionApi={inspectionApi}
+        developmentApi={developmentApi}
+        cleanupApi={cleanupApi}
+      />
+    </ReviewProvider>
+  );
+}
+
+function ScanApplicationContent({
+  connectionStatus,
+  inspectionApi,
+  developmentApi,
+  cleanupApi,
+}: {
+  connectionStatus: string;
+  inspectionApi?: InspectionApi | undefined;
+  developmentApi?: DevelopmentApi | undefined;
+  cleanupApi?: CleanupApi | undefined;
 }): ReactElement {
   const { state, session } = useScanSession();
+  const review = useReview();
   const [destination, setDestination] = useState<Destination>('overview');
   const progress = state.snapshot?.progress;
   return (
@@ -40,9 +70,15 @@ export function ScanApplication({
           {progress
             ? `Generation ${progress.generation} · ${progress.status}${state.stale ? ' · stale' : ''}`
             : 'Scan not started'}
+          {!!review?.selections.length && (
+            <button onClick={() => setDestination('review')}>
+              Review selection ({review.selections.length})
+            </button>
+          )}
         </span>
       }
       views={{
+        review: <Review active={destination === 'review'} api={cleanupApi} />,
         overview: <Overview onInvestigate={() => setDestination('explore')} />,
         settings: (
           <>

@@ -38,6 +38,35 @@ fn fixture(endpoint: &str) -> Fixture {
 }
 
 #[test]
+fn cleanup_reviews_only_native_observations_and_never_calls_docker_mutation() {
+    let service = DockerService::default();
+    let identity = format!("sha256:{}", "a".repeat(64));
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "Images":[{"Id":identity,"Size":123,"Containers":0,"SharedSize":0}],
+        "Containers":[],"Volumes":[],"BuildCache":[]
+    }))
+    .unwrap();
+    let inventory = docker::parse_inventory(&payload).unwrap();
+    let finding_id = inventory.items[0].artifact.finding_id.clone();
+    *reclaim_core::scan::lock(&service.observations) = Some((1234, inventory.items));
+    let review = crate::cleanup::CleanupService::default()
+        .review(
+            &crate::scan::ScanService::default(),
+            &service,
+            vec![crate::cleanup::Selection::Docker { finding_id }],
+        )
+        .unwrap();
+    assert_eq!(review.items.len(), 1);
+    assert_eq!(review.items[0].target, identity);
+    assert_eq!(review.items[0].measured_at_ms, Some(1234));
+    assert!(review.items[0]
+        .unavailable_reason
+        .starts_with("Docker removal unavailable"));
+    // Review only reads the native cache; no process, HTTP DELETE, or tool transport is used.
+    assert!(!service.busy.load(Ordering::SeqCst));
+}
+
+#[test]
 fn fixture_inventory_uses_only_verified_local_gets() {
     let fixture = fixture("unix:///var/run/docker.sock");
     assert!(collect(&fixture, Path::new("/synthetic"))

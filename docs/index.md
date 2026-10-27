@@ -2,6 +2,10 @@
 
 Reclaim has a working desktop shell, appearance controls and a read-only native scan producer. First-run scope controls, shared scan-session orchestration, measured Overview, Explore and Development consume those contracts; cleanup remains pending.
 
+Review eligibility and bounded local operation history are available as a partial
+cleanup delivery. All removal methods remain unavailable; see the explicit
+[cleanup implementation limits](specs/features/review-and-cleanup.md#partial-delivery-and-native-contract).
+
 - [Product context](../PRODUCT.md): confirmed users, purpose and constraints.
 - [Product direction](product.md): planned behavior, delivery stages and open decisions.
 - [Design specification](design/index.md): approved direction, information architecture, flows, layouts and proposed design tokens.
@@ -14,6 +18,7 @@ Reclaim has a working desktop shell, appearance controls and a read-only native 
 - [Overview and shared scan session](specs/features/overview-and-scope.md): settings, native persistence, session consumer contract and measured accounting.
 - [Explore and shared inspector](specs/features/explore.md): shared-session browsing, bounded presentation, identity-authorized Finder handoff and explicit verification limits.
 - [Development Projects and Tools](specs/features/development-views.md): native recognition/Docker presentation, shared inspector, context-preserving cross-links and explicit capture limits.
+- [Review eligibility and history](specs/features/review-and-cleanup.md): explicit shared selection, native unavailable-method explanations, private bounded history and unmet mutation acceptance.
 - [Application feature specifications](specs/features/index.md): complete approved feature scope, dependency contracts and delivery acceptance.
 - [Coding-agent rules](../AGENTS.md): concise repository-wide entry point.
 - [Contributing](../CONTRIBUTING.md): focused contributions, validation and branch flow.

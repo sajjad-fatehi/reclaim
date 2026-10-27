@@ -14,6 +14,7 @@ import {
 } from './accounting';
 import { ScanSettings } from './ScanSettings';
 import type { ScanSnapshot } from './session';
+import { ReviewButton } from '../cleanup/ReviewButton';
 
 const statusLabels = {
   running: 'Scanning',
@@ -360,6 +361,30 @@ function ScanResults({
         or a reclaim estimate. Values capped at unsigned 64-bit maximum may be
         lower bounds.
       </Notice>
+      {snapshot.settled && !retained && (
+        <section aria-label="Review scanned locations">
+          <h2>Review scanned locations</h2>
+          <p>
+            Check cleanup limitations for an exact scanned location. Recognition
+            and size do not make its contents removable.
+          </p>
+          {snapshot.findings
+            .filter((finding) => finding.parentId === null)
+            .map((finding) => (
+              <div key={finding.id} className="review-target-heading">
+                <span className="path-text">{finding.displayName}</span>
+                <ReviewButton
+                  disabled={state.stale}
+                  selection={{
+                    source: 'filesystem',
+                    generation: progress.generation,
+                    findingId: finding.id,
+                  }}
+                />
+              </div>
+            ))}
+        </section>
+      )}
     </section>
   );
 }

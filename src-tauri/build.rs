@@ -16,6 +16,9 @@ fn main() {
             "scan_reveal",
             "docker_inventory",
             "docker_cancel",
+            "cleanup_review",
+            "cleanup_history",
+            "cleanup_clear_history",
         ]),
     ))
     .expect("Failed to build native application permissions");

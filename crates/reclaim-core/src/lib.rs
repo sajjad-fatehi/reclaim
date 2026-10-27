@@ -3,4 +3,5 @@
 pub mod recognition;
 pub mod scan;
 
+pub mod cleanup;
 pub mod docker;
