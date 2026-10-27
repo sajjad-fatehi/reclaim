@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { ArrowRight } from '@phosphor-icons/react/ArrowRight';
 import { ChartPieSlice } from '@phosphor-icons/react/ChartPieSlice';
+import { CaretRight } from '@phosphor-icons/react/CaretRight';
 import { WarningCircle } from '@phosphor-icons/react/WarningCircle';
 import './overview.css';
 import { EmptyState, Notice, ResultTable, Toolbar } from '../shell/primitives';
@@ -16,7 +17,7 @@ import { ReviewButton } from '../cleanup/ReviewButton';
 const statusLabels = {
   running: 'Scanning',
   complete: 'Scan complete',
-  partial: 'Partial coverage',
+  partial: 'Finished with gaps',
   cancelled: 'Scan cancelled',
   failed: 'Scan failed',
 };
@@ -62,7 +63,7 @@ function ScanResults({
     );
   if (progress.status === 'partial')
     attention.push(
-      'Partial coverage: some locations were not fully read. Unvisited descendants are unknown.',
+      'Some locations were not fully read. Unvisited descendants are unknown.',
     );
   if (snapshot.settled && !readable)
     attention.push(
@@ -78,11 +79,30 @@ function ScanResults({
     );
   if (progress.issueCount > 0)
     attention.push(
-      `${progress.issueCount} coverage observations · ${excluded} excluded entries loaded · ${issues.length} access/change/limit issues loaded. Unvisited descendants are unknown.`,
+      <>
+        <dl className="attention-stats">
+          <div>
+            <dt>Coverage observations</dt>
+            <dd>{progress.issueCount}</dd>
+          </div>
+          <div>
+            <dt>Excluded entries loaded</dt>
+            <dd>{excluded}</dd>
+          </div>
+          <div>
+            <dt>Access, change or limit issues loaded</dt>
+            <dd>{issues.length}</dd>
+          </div>
+        </dl>
+        {progress.status === 'complete' && (
+          <span>Unvisited descendants are unknown.</span>
+        )}
+      </>,
     );
   return (
     <section
       className="scan-results"
+      data-volumes={progress.volumes.length}
       aria-label={
         retained ? 'Retained previous measurements' : 'Measured scan results'
       }
@@ -98,7 +118,7 @@ function ScanResults({
         </h3>
         <span className="secondary">Generation {progress.generation}</span>
       </div>
-      <p className="secondary">
+      <p className="secondary results-meta">
         Measured{' '}
         {new Date(
           progress.finishedAtMs ?? progress.startedAtMs,
@@ -127,10 +147,15 @@ function ScanResults({
       <section className="follow-space" aria-labelledby="follow-space-heading">
         <h3 id="follow-space-heading">Follow the space</h3>
         {!snapshot.settled ? (
-          <p>
-            Loading measured categories… Ranking waits for final pages so rows
-            stay stable.
-          </p>
+          <div className="rows-skeleton" role="status">
+            <span className="visually-hidden">
+              Loading measured categories… Ranking waits for final pages so rows
+              stay stable.
+            </span>
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
+          </div>
         ) : (
           <>
             <ResultTable caption="Measured file categories · ranked by allocated contribution">
@@ -226,34 +251,39 @@ function ScanResults({
             {attention.map((message, position) => (
               <li key={position}>
                 <WarningCircle size={20} weight="fill" aria-hidden="true" />
-                <span>{message}</span>
+                <div>{message}</div>
               </li>
             ))}
           </ul>
         </section>
       )}
       <details className="coverage-details">
-        <summary>Scope and access coverage</summary>
-        <ul>
-          {snapshot.scope.roots.map((root) => (
-            <li className="path-text" key={root.id}>
-              {root.displayPath}
-            </li>
-          ))}
-        </ul>
-        <p>
-          {snapshot.scope.exclusions.length} exclusion rules frozen at start. No
-          symlink descent; mount boundaries and unreadable entries reduce
-          coverage.
-        </p>
-        {issues.slice(0, 40).map((finding) => (
-          <p className="path-text" key={finding.id}>
-            {finding.displayName}: {finding.issue?.replaceAll('_', ' ')}
+        <summary>
+          <CaretRight size={16} aria-hidden="true" />
+          Scope and access coverage
+        </summary>
+        <div className="coverage-details-body">
+          <ul>
+            {snapshot.scope.roots.map((root) => (
+              <li className="path-text" key={root.id}>
+                {root.displayPath}
+              </li>
+            ))}
+          </ul>
+          <p>
+            {snapshot.scope.exclusions.length} exclusion rules frozen at start.
+            No symlink descent; mount boundaries and unreadable entries reduce
+            coverage.
           </p>
-        ))}
-        {issues.length > 40 && (
-          <p>Additional issues remain available in shared findings.</p>
-        )}
+          {issues.slice(0, 40).map((finding) => (
+            <p className="path-text" key={finding.id}>
+              {finding.displayName}: {finding.issue?.replaceAll('_', ' ')}
+            </p>
+          ))}
+          {issues.length > 40 && (
+            <p>Additional issues remain available in shared findings.</p>
+          )}
+        </div>
       </details>
       <Notice>
         Logical size differs from allocated storage. Hard links count once;
@@ -315,6 +345,7 @@ export function Overview({
         ),
       )
     : 0;
+  const refreshBlocked = running || (!!snapshot && !snapshot.settled);
   const phase = snapshot
     ? snapshot.settled
       ? statusLabels[snapshot.progress.status]
@@ -372,16 +403,17 @@ export function Overview({
           <p className="secondary">{elapsed}s elapsed</p>
         </header>
       )}
+      {!snapshot && <ScanSettings />}
       <Toolbar label="Scan controls">
         <button
           className="primary-action"
           disabled={
             state.loading ||
             state.busy ||
-            running ||
-            (!!snapshot && !snapshot.settled) ||
+            refreshBlocked ||
             state.preferences.roots.length === 0
           }
+          aria-describedby={refreshBlocked ? 'refresh-hint' : undefined}
           onClick={() => void session.start()}
         >
           {state.busy
@@ -403,9 +435,14 @@ export function Overview({
             Edit next scan
           </button>
         )}
+        {refreshBlocked && (
+          <span id="refresh-hint" className="toolbar-hint secondary">
+            Available when the current scan finishes.
+          </span>
+        )}
       </Toolbar>
       {!snapshot && (
-        <p className="scan-phase" role="status">
+        <p className="visually-hidden" role="status">
           {phase}
         </p>
       )}
@@ -425,7 +462,7 @@ export function Overview({
           </p>
         </section>
       )}
-      {(!snapshot || editing) && <ScanSettings />}
+      {snapshot && editing && <ScanSettings />}
       {snapshot && (
         <ScanResults snapshot={snapshot} onInvestigate={onInvestigate} />
       )}

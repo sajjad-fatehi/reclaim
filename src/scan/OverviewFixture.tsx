@@ -84,6 +84,29 @@ function progressFor(
   };
 }
 
+const secondVolume = {
+  ...fixtureVolume,
+  id: 'fixture2',
+  totalBytes: String(500n * gibibyte),
+  usedBytes: String(300n * gibibyte),
+  freeBytes: String(200n * gibibyte),
+  availableBytes: String(190n * gibibyte),
+};
+
+function secondVolumeFindings(): Finding[] {
+  const [root] = fixtureFindingSet();
+  return [18n, 12n, 7n].map((size, position): Finding => ({
+    ...root!,
+    id: `1:v${position}`,
+    parentId: root!.id,
+    displayName: `SYNTHETIC-Volume-${position + 1}.mov`,
+    kind: 'file',
+    logicalBytes: String(size * gibibyte - 4096n),
+    allocatedBytes: String(size * gibibyte),
+    identity: `fixture2:v${position}`,
+  }));
+}
+
 const issueFindings: Finding[] = [
   {
     ...fixtureFindingSet()[0]!,
@@ -106,20 +129,55 @@ const issueFindings: Finding[] = [
 ];
 
 type FixtureState =
-  'empty' | 'running' | 'complete' | 'partial' | 'cancelled' | 'failed';
+  | 'empty'
+  | 'running'
+  | 'complete'
+  | 'partial'
+  | 'cancelled'
+  | 'failed'
+  | 'multivolume';
 
 function createOverviewApi(state: FixtureState): ScanApi {
   const api = createFixtureApi();
   if (state === 'empty') return api;
-  const complete = state === 'complete';
-  const status: Progress['status'] = state;
+  const multivolume = state === 'multivolume';
+  const complete = state === 'complete' || multivolume;
+  const status: Progress['status'] = multivolume ? 'complete' : state;
   const findings =
     state === 'running'
       ? []
-      : complete
-        ? fixtureFindingSet()
-        : [...fixtureFindingSet(), ...issueFindings];
+      : multivolume
+        ? [...fixtureFindingSet(), ...secondVolumeFindings()]
+        : complete
+          ? fixtureFindingSet()
+          : [...fixtureFindingSet(), ...issueFindings];
   const progress = progressFor(status, findings);
+  if (multivolume) {
+    const secondMeasured = measuredBytes(secondVolumeFindings());
+    const firstMeasured = measuredBytes(fixtureFindingSet());
+    progress.volumes = [
+      {
+        volume: fixtureVolume,
+        scopeLogicalBytes: String(firstMeasured),
+        scopeAllocatedBytes: String(firstMeasured),
+        unscannedOrUnexplainedBytes: String(
+          BigInt(fixtureVolume.totalBytes) -
+            BigInt(fixtureVolume.freeBytes) -
+            firstMeasured,
+        ),
+      },
+      {
+        volume: secondVolume,
+        scopeLogicalBytes: String(secondMeasured),
+        scopeAllocatedBytes: String(secondMeasured),
+        unscannedOrUnexplainedBytes: String(
+          BigInt(secondVolume.totalBytes) -
+            BigInt(secondVolume.freeBytes) -
+            secondMeasured,
+        ),
+      },
+    ];
+  }
   api.current = async () => ({
     scope: { id: 'fixture', roots: [fixtureLocation], exclusions: [] },
     progress,
@@ -147,6 +205,7 @@ export function OverviewFixture(): ReactElement {
         'partial',
         'cancelled',
         'failed',
+        'multivolume',
       ] as const
     ).find((candidate) => candidate === requested) ?? 'partial';
   return (

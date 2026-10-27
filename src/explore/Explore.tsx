@@ -214,10 +214,15 @@ function ExploreSnapshot({
       scroll: 0,
     });
   }
-  function sortHeader(sort: SortKey, label: string): ReactElement {
+  function sortHeader(
+    sort: SortKey,
+    label: string,
+    numeric = false,
+  ): ReactElement {
     return (
       <th
         scope="col"
+        className={numeric ? 'numeric' : undefined}
         aria-sort={
           view.sort === sort
             ? view.descending
@@ -369,7 +374,7 @@ function ExploreSnapshot({
             <thead>
               <tr>
                 {sortHeader('name', 'Name')}
-                {sortHeader('size', 'Allocated size')}
+                {sortHeader('size', 'Allocated size', true)}
                 {sortHeader('kind', 'Type')}
                 {sortHeader('status', 'Status')}
                 <th scope="col">Actions</th>

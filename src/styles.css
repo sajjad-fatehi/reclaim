@@ -101,6 +101,13 @@ button:disabled {
   opacity: 0.55;
   transform: none;
 }
+button:disabled.primary-action {
+  opacity: 1;
+  background: var(--raised);
+  color: var(--secondary);
+  border: 1px dashed var(--boundary);
+  box-shadow: none;
+}
 .primary-action {
   display: inline-flex;
   gap: var(--space-small);
@@ -108,7 +115,6 @@ button:disabled {
   background: var(--accent);
   color: var(--on-accent);
   border-color: transparent;
-  margin-top: var(--space-medium);
   box-shadow: var(--shadow-control);
 }
 .primary-action:hover {
@@ -302,7 +308,6 @@ main {
 .notice,
 .settings-card,
 .scan-settings,
-.scan-results,
 .development-detail,
 .inspector {
   background: var(--glass);
@@ -1472,6 +1477,8 @@ tr[data-selected='true'] .artifact-chip {
   box-shadow: none;
   font: inherit;
   color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
 }
 .explore-content .result-table tbody tr {
   cursor: default;

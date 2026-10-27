@@ -104,7 +104,10 @@ export function VolumeUsage({
             </p>
           </>
         ) : (
-          <div className="chart-placeholder">
+          <div className="chart-placeholder" role="status">
+            {!snapshot.settled && (
+              <span className="chart-skeleton" aria-hidden="true" />
+            )}
             <p>
               {snapshot.settled
                 ? 'No category chart for this volume: measured categories are empty or cannot be reconciled with volume accounting.'
