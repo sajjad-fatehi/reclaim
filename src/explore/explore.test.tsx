@@ -445,3 +445,31 @@ test('Overview investigation starts at scan scope and reset restores prior folde
   expect(screen.getByRole('button', { name: 'Inspect .hidden' })).toBeTruthy();
   disconnect();
 });
+
+test('arrow keys move selection without stealing focus; Treemap layout exposes tiles', async () => {
+  const { disconnect } = await setup();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: `Open folder ${fixtureLocation.displayPath}`,
+    }),
+  );
+  const first = screen.getAllByRole('button', { name: /^Inspect / })[0];
+  if (!first) throw new Error('Missing row');
+  first.focus();
+  fireEvent.click(first);
+  fireEvent.keyDown(first, { key: 'ArrowDown' });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const pressed = screen
+    .getAllByRole('button', { name: /^Inspect / })
+    .filter((button) => button.getAttribute('aria-pressed') === 'true');
+  expect(pressed).toHaveLength(1);
+  expect(pressed[0]).not.toBe(first);
+  expect(document.activeElement).toBe(pressed[0]);
+  fireEvent.click(screen.getByRole('button', { name: 'Treemap' }));
+  expect(
+    screen.getByRole('group', { name: 'Treemap of allocated size' }),
+  ).toBeTruthy();
+  disconnect();
+});

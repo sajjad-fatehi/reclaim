@@ -1,12 +1,14 @@
 import { Folder } from '@phosphor-icons/react/Folder';
+import { FolderOpen } from '@phosphor-icons/react/FolderOpen';
 import { File } from '@phosphor-icons/react/File';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { KeyboardEvent, ReactElement } from 'react';
 import { useScanSession } from '../scan/useScanSession';
 import type { ScanSnapshot } from '../scan/session';
 import { formatBytes } from '../scan/accounting';
 import { EmptyState, Notice, ResultTable, Toolbar } from '../shell/primitives';
 import { ItemInspector } from './ItemInspector';
+import { Treemap } from './Treemap';
 import {
   ancestors,
   browse,
@@ -86,6 +88,8 @@ function ExploreSnapshot({
     () => new Map(),
   );
   const [notice, setNotice] = useState('');
+  const [quietSelection, setQuietSelection] = useState(false);
+  const [layout, setLayout] = useState<'list' | 'treemap'>('list');
   const [views, setViews] = useState<Map<string, ViewState>>(() => new Map());
   const region = useRef<HTMLDivElement>(null);
   const searchReference = useRef<HTMLInputElement>(null);
@@ -163,6 +167,45 @@ function ExploreSnapshot({
       'Related item opened within the same scan; breadcrumb and filters retained.',
     );
   }
+  function handleBrowseKeys(event: KeyboardEvent<HTMLElement>): void {
+    const target = event.target;
+    if (
+      event.defaultPrevented ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      (target instanceof HTMLElement &&
+        !target.closest('.table-scroll, .treemap')) ||
+      (target instanceof HTMLElement && target.closest('th'))
+    )
+      return;
+    const position = visibleRows.findIndex((row) => row.id === selectedId);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      const next = visibleRows[position === -1 ? 0 : position + step];
+      if (!next) return;
+      event.preventDefault();
+      setQuietSelection(true);
+      setSelectedId(next.id);
+      Array.from(
+        event.currentTarget.querySelectorAll<HTMLElement>(
+          'button[data-finding-id]',
+        ),
+      )
+        .find((button) => button.dataset.findingId === next.id)
+        ?.focus();
+      return;
+    }
+    if (event.key === 'ArrowRight' && selection?.kind === 'directory') {
+      event.preventDefault();
+      navigate(selection.id);
+      return;
+    }
+    if (event.key === 'ArrowLeft' && directoryId !== null) {
+      event.preventDefault();
+      navigate(index.byId.get(directoryId)?.parentId ?? null);
+    }
+  }
   function sortBy(sort: SortKey): void {
     editView({
       sort,
@@ -190,9 +233,16 @@ function ExploreSnapshot({
       </th>
     );
   }
+  function selectFinding(findingId: string): void {
+    setQuietSelection(false);
+    setSelectedId(findingId);
+  }
+  const directoryName = directoryId
+    ? (index.byId.get(directoryId)?.displayName ?? 'Folder')
+    : 'Scan locations';
   return (
     <div className="explore-layout">
-      <div className="explore-content">
+      <div className="explore-content" onKeyDown={handleBrowseKeys}>
         <nav aria-label="Folder breadcrumbs" className="breadcrumbs">
           <button
             onClick={() => navigate(null)}
@@ -211,6 +261,29 @@ function ExploreSnapshot({
             </button>
           ))}
         </nav>
+        <div className="explore-heading">
+          <div>
+            <h2 className="path-text">{directoryName}</h2>
+            <p className="secondary">
+              {rows.length} entries · hidden shown
+              {layout === 'treemap' ? ' · tile area = allocated size' : ''}
+            </p>
+          </div>
+          <div className="segmented" role="group" aria-label="Browsing layout">
+            <button
+              aria-pressed={layout === 'list'}
+              onClick={() => setLayout('list')}
+            >
+              List
+            </button>
+            <button
+              aria-pressed={layout === 'treemap'}
+              onClick={() => setLayout('treemap')}
+            >
+              Treemap
+            </button>
+          </div>
+        </div>
         <Toolbar label="Explore filters">
           <button
             disabled={directoryId === null}
@@ -253,11 +326,13 @@ function ExploreSnapshot({
             retains this filter; Reset filters restores all findings.
           </Notice>
         )}
-        <p className="secondary">
+        <p className="secondary explore-caveat">
           Allocated contribution · directory totals include descendants; shared
           identities count once. Not guaranteed recoverable space. Search
           includes descendants; without filters, direct children shown. Hidden
-          entries included.
+          entries included. Arrow keys move the selection; Right opens a folder,
+          Left goes up. Size does not imply recoverable space and age does not
+          imply disuse.
         </p>
         {(stale ||
           !snapshot.settled ||
@@ -269,7 +344,7 @@ function ExploreSnapshot({
             excluded, denied and vanished entries retain their measured state.
           </Notice>
         )}
-        <p role="status">
+        <p role="status" className="secondary">
           {notice ||
             `${rows.length} results · page ${page + 1} of ${pageCount} · at most ${pageSize} rows rendered`}
         </p>
@@ -281,6 +356,7 @@ function ExploreSnapshot({
         )}
         <div
           ref={region}
+          hidden={layout !== 'list'}
           onScrollCapture={(event) => {
             if (
               event.target instanceof HTMLElement &&
@@ -304,6 +380,7 @@ function ExploreSnapshot({
                 <tr
                   key={finding.id}
                   data-selected={selectedId === finding.id ? 'true' : undefined}
+                  onClick={() => selectFinding(finding.id)}
                 >
                   <th scope="row">
                     <div className="finding-name">
@@ -325,22 +402,35 @@ function ExploreSnapshot({
                     )}
                   </td>
                   <td>{finding.kind}</td>
-                  <td>{measurementStatus(finding)}</td>
+                  <td>
+                    <span
+                      className="status-pill"
+                      data-state={finding.issue ? 'issue' : undefined}
+                    >
+                      {measurementStatus(finding)}
+                    </span>
+                  </td>
                   <td>
                     <div className="row-actions">
                       {finding.kind === 'directory' && (
                         <button
-                          onClick={() => navigate(finding.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigate(finding.id);
+                          }}
                           aria-label={`Open folder ${finding.displayName}`}
                         >
+                          <FolderOpen size={16} aria-hidden="true" />
                           Open
                         </button>
                       )}
                       <button
+                        data-finding-id={finding.id}
                         aria-pressed={selectedId === finding.id}
                         onClick={(event) => {
+                          event.stopPropagation();
                           event.currentTarget.focus();
-                          setSelectedId(finding.id);
+                          selectFinding(finding.id);
                         }}
                         aria-label={`Inspect ${finding.displayName}`}
                       >
@@ -353,6 +443,14 @@ function ExploreSnapshot({
             </tbody>
           </ResultTable>
         </div>
+        {layout === 'treemap' && (
+          <Treemap
+            findings={visibleRows}
+            selectedId={selectedId}
+            onSelect={selectFinding}
+            onOpen={navigate}
+          />
+        )}
         {rows.length === 0 && (
           <p>
             {snapshot.settled
@@ -383,6 +481,7 @@ function ExploreSnapshot({
         progress={snapshot.progress}
         stale={stale}
         settled={snapshot.settled}
+        focusOnChange={!quietSelection}
         onClose={() => {
           setSelectedId(null);
           if (!visibleRows.some((finding) => finding.id === selectedId))

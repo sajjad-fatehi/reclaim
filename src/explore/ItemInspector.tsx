@@ -17,10 +17,18 @@ export interface ItemInspectorProps {
   progress: Progress;
   stale: boolean;
   settled: boolean;
+  focusOnChange?: boolean;
   onClose: () => void;
   onInspectRelated: (findingId: string) => void;
   api?: InspectionApi | undefined;
 }
+const kindLabels: Record<Finding['kind'], string> = {
+  directory: 'Folder',
+  file: 'File',
+  symlink: 'Symlink',
+  other: 'Other',
+  unknown: 'Unknown type',
+};
 function timeLabel(timestamp: number | null): string {
   return timestamp === null ? 'Unknown' : new Date(timestamp).toLocaleString();
 }
@@ -32,13 +40,14 @@ export function ItemInspector(props: ItemInspectorProps): ReactElement {
     : (props.dockerItem?.artifact.findingId ?? null);
   useEffect(() => {
     if (
+      (props.focusOnChange ?? true) &&
       previousSelection.current !== null &&
       selectionKey !== null &&
       previousSelection.current !== selectionKey
     )
       contentReference.current?.focus();
     previousSelection.current = selectionKey;
-  }, [selectionKey]);
+  }, [selectionKey, props.focusOnChange]);
   return (
     <Inspector
       title="Item details"
@@ -137,151 +146,152 @@ function InspectorContent({
     }
   }
   const artifact = details?.artifact;
+  const subtitle = [
+    kindLabels[finding.kind],
+    artifact?.family.replaceAll('_', ' '),
+    artifact ? `${artifact.confidence} confidence` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <>
-      {finding && (
+      <header className="inspector-hero" data-kind={finding.kind}>
+        <h3 className="path-text">{finding.displayName}</h3>
+        <p>{subtitle}</p>
+      </header>
+      <p className="inspector-figure">
+        <strong>{formatBytes(finding.allocatedBytes)}</strong>
+        <span>
+          allocated · {formatBytes(finding.logicalBytes)} logical
+          {finding.complete ? '' : ' · partial'}
+        </span>
+      </p>
+      <h3 className="inspector-label">Path</h3>
+      <p className="path-box path-text">
+        {details?.displayPath ?? 'Full path loading…'}
+      </p>
+      <p className="secondary path-text">
+        Finding {finding.id} · generation {generation}
+      </p>
+      <Toolbar label="Item actions">
+        <ReviewButton
+          candidate={
+            details?.recognizedAtId === finding.id &&
+            !!artifact &&
+            (artifact.regenerable || artifact.nature === 'worktree')
+          }
+          disabled={stale || !settled}
+          selection={{
+            source: 'filesystem',
+            generation,
+            findingId: finding.id,
+          }}
+        />
+        <button
+          disabled={busy || stale || finding.kind === 'symlink'}
+          onClick={() => void perform('reveal')}
+        >
+          Show in Finder
+        </button>
+        <button
+          disabled={busy || !details || details.copyPath === null}
+          onClick={() => void perform('copy')}
+        >
+          Copy path
+        </button>
+        <button
+          disabled={busy}
+          onClick={() => {
+            setDetails(null);
+            setMessage('');
+            setRevision((value) => value + 1);
+          }}
+        >
+          Retry details
+        </button>
+      </Toolbar>
+      {details?.copyPath === null && (
+        <Notice>
+          Path contains non-UTF-8 bytes. Display uses escaping; exact text copy
+          is unavailable. Native identity still supports Finder.
+        </Notice>
+      )}
+      <p role="status">{message}</p>
+      <h3 className="inspector-label">Consequences</h3>
+      <p>
+        {artifact?.consequence ??
+          'Removal consequences unknown. This may contain source, personal or persistent data. Inspection does not authorize removal.'}
+      </p>
+      <p className="secondary">
+        Allocated contribution is not guaranteed recoverable space; APFS sharing
+        and snapshots remain unknown. Inspection only. Review cleanup options
+        explains native eligibility; selection does not authorize removal.
+        Modification time does not prove inactivity; growth history and physical
+        recovery are unknown.
+      </p>
+      <h3 className="inspector-label">Ownership and evidence</h3>
+      {artifact ? (
         <>
-          <h3 className="path-text">{finding.displayName}</h3>
-          <p className="path-text">
-            {details?.displayPath ?? 'Full path loading…'}
+          <p>
+            {artifact.family.replaceAll('_', ' ')} ·{' '}
+            {artifact.nature.replaceAll('_', ' ')} · {artifact.confidence}{' '}
+            confidence
           </p>
-          <p className="secondary path-text">
-            Finding {finding.id} · generation {generation}
-          </p>
-          <Toolbar label="Item actions">
-            <ReviewButton
-              candidate={
-                details?.recognizedAtId === finding.id &&
-                !!artifact &&
-                (artifact.regenerable || artifact.nature === 'worktree')
-              }
-              disabled={stale || !settled}
-              selection={{
-                source: 'filesystem',
-                generation,
-                findingId: finding.id,
-              }}
-            />
-            <button
-              disabled={busy || stale || finding.kind === 'symlink'}
-              onClick={() => void perform('reveal')}
-            >
-              Show in Finder
-            </button>
-            <button
-              disabled={busy || !details || details.copyPath === null}
-              onClick={() => void perform('copy')}
-            >
-              Copy path
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => {
-                setDetails(null);
-                setMessage('');
-                setRevision((value) => value + 1);
-              }}
-            >
-              Retry details
-            </button>
-          </Toolbar>
-          {details?.copyPath === null && (
-            <Notice>
-              Path contains non-UTF-8 bytes. Display uses escaping; exact text
-              copy is unavailable. Native identity still supports Finder.
-            </Notice>
-          )}
-          <p role="status">{message}</p>
-          <h3>Ownership and evidence</h3>
-          {artifact ? (
-            <>
-              <p>
-                {artifact.family.replaceAll('_', ' ')} ·{' '}
-                {artifact.nature.replaceAll('_', ' ')} · {artifact.confidence}{' '}
-                confidence
-              </p>
-              {details.recognizedAtId !== finding.id && (
-                <p>
-                  Inherited from recognized ancestor; this item was not
-                  independently classified.
-                </p>
-              )}
-              <ul>
-                {artifact.evidence.map((evidence) => (
-                  <li key={`${evidence.findingId}:${evidence.method}`}>
-                    <button
-                      onClick={() => onInspectRelated(evidence.findingId)}
-                    >
-                      Inspect evidence: {evidence.method.replaceAll('_', ' ')}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {artifact.projectId && (
-                <button
-                  onClick={() => onInspectRelated(artifact.projectId ?? '')}
-                >
-                  Inspect related project
-                </button>
-              )}
-              {details.recognizedAtId &&
-                details.recognizedAtId !== finding.id && (
-                  <button
-                    onClick={() =>
-                      onInspectRelated(details.recognizedAtId ?? '')
-                    }
-                  >
-                    Inspect recognized owner/tool
-                  </button>
-                )}
-              {!artifact.complete && (
-                <Notice>
-                  Recognition incomplete; ownership may be uncertain.
-                </Notice>
-              )}
-            </>
-          ) : (
+          {details.recognizedAtId !== finding.id && (
             <p>
-              {details
-                ? 'Unknown owner. No recognized evidence for this item.'
-                : 'Ownership unavailable until details load.'}
+              Inherited from recognized ancestor; this item was not
+              independently classified.
             </p>
           )}
-          <h3>Measurement</h3>
-          <dl className="inspection-facts">
-            <dt>Allocated contribution</dt>
-            <dd>{formatBytes(finding.allocatedBytes)}</dd>
-            <dt>Logical contribution</dt>
-            <dd>{formatBytes(finding.logicalBytes)}</dd>
-            <dt>Measured</dt>
-            <dd>{timeLabel(finding.measuredAtMs)}</dd>
-            <dt>Modified</dt>
-            <dd>{timeLabel(finding.modifiedAtMs)}</dd>
-            <dt>Coverage</dt>
-            <dd>
-              {measurementStatus(finding)} · scan {progress.status}
-              {!settled ? ' · updating' : ''}
-              {stale ? ' · stale' : ''}
-            </dd>
-          </dl>
-          <p>
-            Directory totals include measured descendants. Shared identities
-            count once{finding.aliasOf ? `; counted at ${finding.aliasOf}` : ''}
-            . Allocated contribution is not guaranteed recoverable space; APFS
-            sharing and snapshots remain unknown.
-          </p>
-          <h3>Consequences</h3>
-          <p>
-            {artifact?.consequence ??
-              'Removal consequences unknown. This may contain source, personal or persistent data. Inspection does not authorize removal.'}
-          </p>
-          <p>
-            Inspection only. Review cleanup options explains native eligibility;
-            selection does not authorize removal. Modification time does not
-            prove inactivity; growth history and physical recovery are unknown.
-          </p>
+          <ul className="evidence-list">
+            {artifact.evidence.map((evidence) => (
+              <li key={`${evidence.findingId}:${evidence.method}`}>
+                <button onClick={() => onInspectRelated(evidence.findingId)}>
+                  Inspect evidence: {evidence.method.replaceAll('_', ' ')}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {artifact.projectId && (
+            <button onClick={() => onInspectRelated(artifact.projectId ?? '')}>
+              Inspect related project
+            </button>
+          )}
+          {details.recognizedAtId && details.recognizedAtId !== finding.id && (
+            <button
+              onClick={() => onInspectRelated(details.recognizedAtId ?? '')}
+            >
+              Inspect recognized owner/tool
+            </button>
+          )}
+          {!artifact.complete && (
+            <Notice>Recognition incomplete; ownership may be uncertain.</Notice>
+          )}
         </>
+      ) : (
+        <p>
+          {details
+            ? 'Unknown owner. No recognized evidence for this item.'
+            : 'Ownership unavailable until details load.'}
+        </p>
       )}
+      <h3 className="inspector-label">Measurement</h3>
+      <dl className="inspection-facts">
+        <dt>Measured</dt>
+        <dd>{timeLabel(finding.measuredAtMs)}</dd>
+        <dt>Modified</dt>
+        <dd>{timeLabel(finding.modifiedAtMs)}</dd>
+        <dt>Coverage</dt>
+        <dd>
+          {measurementStatus(finding)} · scan {progress.status}
+          {!settled ? ' · updating' : ''}
+          {stale ? ' · stale' : ''}
+        </dd>
+      </dl>
+      <p className="secondary">
+        Directory totals include measured descendants. Shared identities count
+        once{finding.aliasOf ? `; counted at ${finding.aliasOf}` : ''}.
+      </p>
     </>
   );
 }
