@@ -4,37 +4,37 @@
 
 ## Window model
 
-Proposed reference frames: 1440 × 900 and 1180 × 760 CSS pixels; verify compact behavior at 900 × 600. These are design targets, not enforced native window minima. This is a desktop app; no phone navigation or marketing-page breakpoint scheme is specified.
+Reference frames: 1440 × 900 and 1180 × 760 CSS pixels; verify compact behavior at 900 × 600. These are design targets, not enforced native window minima. This is a desktop app; no phone navigation or marketing-page breakpoint scheme is specified.
 
-Use a 208-pixel initial navigation rail, a flexible work area and an optional 320–360-pixel inspector. Keep primary content flexible rather than fixing a full grid to one screenshot size. At compact widths the inspector becomes an accessible sheet; do not compress path and size columns into unreadable slivers. Preserve navigation labels or offer an explicitly labelled collapse control.
+The window is a canvas with no sidebar. A header holds the brand at the left, a centered floating glass pill with the four destinations, and at the right a scan-coverage status chip and a round Settings button. Below it, a flexible workspace carries the active view and an optional 22 rem inspector, with a one-line connection status at the bottom. At 1100 px and below the pill moves to its own row; at 760 px and below inactive tabs show only their icon while the current tab keeps its label. At compact widths the inspector becomes an accessible edge sheet; do not compress path and size columns into unreadable slivers.
 
-Window toolbar target: 48–56 pixels with adequate macOS titlebar clearance. Data toolbar: approximately 44 pixels. Standard result rows: 40 pixels; compact density is not an initial user setting. These targets require rendered validation, text scaling and actual window-control testing.
+The scan chip words the current state (not started, scanning, complete, partial coverage, cancelled, failed, stale) so coverage limits stay visible from every screen. Review & Clean carries a count of selected items. Standard result rows are 40 px; compact density is not an initial user setting. Window-control clearance and 200% text enlargement need rendered validation.
 
 ## Overview composition
 
-Navigation rail → main area with volume/scan header → warm introductory/task surface with original dimensional artwork where appropriate → full-width usage strip → ranked category rows and investigation suggestions. An inspector occupies the right only after selection. Artwork adds an inviting focal point but never impersonates measurements or replaces the proportional display and textual list.
+Floating navigation and scan status → measured-scope visualization with its coverage ribbon → ranked category rows and the items that need attention. An inspector occupies the right only after selection. Artwork adds an inviting focal point but never impersonates measurements or replaces the proportional display and textual list.
 
-The first viewport should expose the selected volume, coverage limits, leading measured consumption and next investigation action. Use the user's warm CleanMyMac-inspired composition and depth without burying disk accounting beneath an oversized promotional hero. Rounded task surfaces are welcome when each has a real distinct job.
+The first viewport should expose the selected volume, coverage limits, leading measured consumption and next investigation action. Do not bury disk accounting beneath an oversized promotional hero. Rounded glass panels are welcome when each has a real distinct job.
 
 ## Explore composition
 
-Navigation rail → breadcrumbs and scoped search → sortable result table → inspector. Filters remain directly above the results they affect. A selection summary is attached to the list and links to Review & Clean; it does not conceal row data or become a permanent Delete button.
+Header navigation → breadcrumbs and scoped search → sortable result table → inspector. Filters remain directly above the results they affect. A selection summary is attached to the list and links to Review & Clean; it does not conceal row data or become a permanent Delete button.
 
 Keep size figures right-aligned, filenames left-aligned and status labels in consistent columns. Preserve a stable primary column and expose secondary columns through details when space is constrained. Retain full-path access and deliberate horizontal scrolling where necessary.
 
 ## Development composition
 
-Navigation rail → Projects / Tools tabs → scoped filters → comparable result rows → inspector. Rows use the same size, status and ownership grammar as Explore. Switching views changes grouping, not underlying counted bytes.
+Header navigation → Projects / Tools tabs → scoped filters → comparable result rows → inspector. Rows use the same size, status and ownership grammar as Explore. Switching views changes grouping, not underlying counted bytes.
 
 ## Review composition
 
-Navigation rail → selection summary and coverage/measurement caveat → consequence-grouped items → action footer. Keep the primary action close to the selection and use specific copy such as Review removal. The final irreversible action belongs to a confirmation with item details and consequence, not the general navigation bar.
+Header navigation → selection summary and coverage/measurement caveat → consequence-grouped items → action footer. Keep the primary action close to the selection and use specific copy such as Review removal. The final irreversible action belongs to a confirmation with item details and consequence, not the general navigation bar.
 
 ## Required component inventory
 
 | Component | Responsibility and states |
 | --- | --- |
-| App shell | Navigation, volume context, titlebar-safe controls |
+| App shell | Floating navigation pill, scan-coverage status chip, Settings, titlebar-safe header |
 | Scan scope editor | Suggested/manual paths, access status, exclusions |
 | Scan status region | Not started, scanning, partial, completed, error |
 | Usage strip and legend | Measured proportions, selected segment, unavailable scope |

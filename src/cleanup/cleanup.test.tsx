@@ -124,7 +124,7 @@ test('explicit selection survives navigation; native unavailability never expose
     within(location).getByRole('button', { name: 'Review cleanup options' }),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Explore' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Review & Clean' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Review & Clean/ }));
   expect(
     screen.getByRole('heading', { name: /Review selection/ }),
   ).toBeTruthy();
@@ -163,7 +163,7 @@ test('double check suppressed, mismatched native response rejected, corrupt hist
       screen.getByRole('region', { name: 'Review scanned locations' }),
     ).getByRole('button', { name: 'Review cleanup options' }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Review & Clean' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Review & Clean/ }));
   const button = screen.getByRole('button', { name: 'Check eligibility' });
   fireEvent.click(button);
   fireEvent.click(button);
@@ -245,7 +245,7 @@ test('eligible plan requires separate Cancel-focused exact-target confirmation a
       screen.getByRole('region', { name: 'Review scanned locations' }),
     ).getByRole('button', { name: 'Review cleanup options' }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Review & Clean' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Review & Clean/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Check eligibility' }));
   await settle();
   expect(api.execute).not.toHaveBeenCalled();
@@ -302,7 +302,7 @@ test('irreversible tool confirmation requires acknowledgement; cancellation only
       screen.getByRole('region', { name: 'Review scanned locations' }),
     ).getByRole('button', { name: 'Review cleanup options' }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Review & Clean' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Review & Clean/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Check eligibility' }));
   await settle();
   fireEvent.click(screen.getByRole('button', { name: 'Review confirmation' }));
