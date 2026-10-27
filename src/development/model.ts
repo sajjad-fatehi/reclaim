@@ -36,6 +36,9 @@ export function artifactBytes(
     ? artifact.ownedAllocatedBytes
     : artifact.exclusiveAllocatedBytes;
 }
+export function hasUncommittedWork(worktree: Worktree | null): boolean {
+  return worktree?.changes === 'dirty' || worktree?.changes === 'untracked';
+}
 export function worktreeState(worktree: Worktree | null): string {
   if (!worktree) return 'Git state unknown / not recognized';
   return `${worktree.main ? 'Main worktree' : 'Linked worktree'} · ${worktree.detached ? 'detached HEAD' : (worktree.branch ?? 'branch unknown')} · ${worktree.changes} · ${worktree.locked ? 'locked' : worktree.metadataId ? 'no lock observed' : 'lock unknown'}`;
