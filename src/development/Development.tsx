@@ -26,12 +26,14 @@ import type {
 import {
   artifactBytes,
   filterArtifacts,
+  hasUncommittedWork,
   initialDevelopmentView,
   isProject,
   relatedWorktrees,
   worktreeState,
 } from './model';
 import type { DevelopmentTab, DevelopmentView } from './model';
+import { ArtifactChip, CautionBadge, DockerChip } from './presentation';
 
 interface DevelopmentProps {
   api?: DevelopmentApi | undefined;
@@ -201,6 +203,13 @@ function DevelopmentSnapshot({
       index.byId.get(artifact.findingId)?.displayName ?? artifact.findingId
     );
   }
+  const projectCount = artifacts.filter(isProject).length;
+  const uncommittedCount = artifacts.filter((artifact) =>
+    hasUncommittedWork(artifact.worktree),
+  ).length;
+  const persistentCount = inventory
+    ? inventory.items.filter((item) => item.persistent).length
+    : 0;
   const ownedArtifacts = selected
     ? artifacts.filter(
         (artifact) =>
@@ -213,7 +222,9 @@ function DevelopmentSnapshot({
     <div className="explore-layout development-layout">
       <div className="explore-content">
         <div className="development-intro">
-          <Code size={28} aria-hidden="true" />
+          <span className="development-intro-icon">
+            <Code size={28} aria-hidden="true" />
+          </span>
           <div>
             <h2>See what belongs where</h2>
             <p>
@@ -221,7 +232,29 @@ function DevelopmentSnapshot({
               scan.
             </p>
           </div>
+          {report && (
+            <dl className="development-stats" aria-label="Recognition summary">
+              <div>
+                <dt>Projects</dt>
+                <dd>{projectCount}</dd>
+              </div>
+              <div>
+                <dt>Tool artifacts</dt>
+                <dd>{artifacts.length}</dd>
+              </div>
+            </dl>
+          )}
         </div>
+        {uncommittedCount > 0 && (
+          <p className="development-alert" role="note">
+            <CautionBadge kind="worktree">Uncommitted work</CautionBadge>
+            {uncommittedCount === 1
+              ? '1 worktree in this scan holds changes'
+              : `${uncommittedCount} worktrees in this scan hold changes`}{' '}
+            that exist nowhere else. Inspection only; Reclaim never offers these
+            for cleanup.
+          </p>
+        )}
         <div
           role="tablist"
           aria-label="Development views"
@@ -342,30 +375,50 @@ function DevelopmentSnapshot({
             </button>
             <button onClick={onOverview}>Scan locations</button>
           </Toolbar>
-          <p className="secondary path-text">
-            Scope:{' '}
-            {snapshot.scope.roots.map((root) => root.displayPath).join(' · ')}.{' '}
-            {snapshot.scope.exclusions.length} exclusions. Measured{' '}
-            {new Date(
-              snapshot.progress.finishedAtMs ?? snapshot.progress.startedAtMs,
-            ).toLocaleString()}
-            .
-          </p>
-          <Notice>
-            {tab === 'projects'
-              ? 'Native owned project totals include source and owned artifacts, excluding nested projects. Source remainder and artifact rows are breakdowns, not additional totals.'
-              : 'Grouped by native tool family. Each exclusive allocated contribution excludes separately recognized descendants and counts shared file identities once. Project rows show source remainder only.'}{' '}
-            Allocated bytes are not guaranteed recoverable space. Shared stores
-            are never added to each related project.
-          </Notice>
-          {(stale || !settled || snapshot.progress.status !== 'complete') && (
+          <div className="development-notes">
+            <p className="secondary path-text">
+              Scope:{' '}
+              {snapshot.scope.roots.map((root) => root.displayPath).join(' · ')}
+              . {snapshot.scope.exclusions.length} exclusions. Measured{' '}
+              {new Date(
+                snapshot.progress.finishedAtMs ?? snapshot.progress.startedAtMs,
+              ).toLocaleString()}
+              .
+            </p>
             <Notice>
-              {stale ? 'Stale scan. ' : ''}Scan {snapshot.progress.status}
-              {!settled ? ' · measurements / recognition pending' : ''}. Denied,
-              excluded and vanished locations limit coverage.{' '}
-              {snapshot.progress.terminalIssue ?? ''}
+              {tab === 'projects'
+                ? 'Native owned project totals include source and owned artifacts, excluding nested projects. Source remainder and artifact rows are breakdowns, not additional totals.'
+                : 'Grouped by native tool family. Each exclusive allocated contribution excludes separately recognized descendants and counts shared file identities once. Project rows show source remainder only.'}{' '}
+              Allocated bytes are not guaranteed recoverable space. Shared
+              stores are never added to each related project.
             </Notice>
-          )}
+            {(stale || !settled || snapshot.progress.status !== 'complete') && (
+              <Notice>
+                {stale ? 'Stale scan. ' : ''}Scan {snapshot.progress.status}
+                {!settled ? ' · measurements / recognition pending' : ''}.
+                Denied, excluded and vanished locations limit coverage.{' '}
+                {snapshot.progress.terminalIssue ?? ''}
+              </Notice>
+            )}
+            {report &&
+              (!report.finished ||
+                report.limited ||
+                report.cancelled ||
+                report.diagnostics.length > 0) && (
+                <Notice>
+                  Recognition{' '}
+                  {report.cancelled
+                    ? 'cancelled'
+                    : report.limited
+                      ? 'limited'
+                      : report.finished
+                        ? 'finished with coverage limits'
+                        : 'incomplete'}
+                  . Unknown ownership remains unknown; no tool installation or
+                  inactivity is inferred.
+                </Notice>
+              )}
+          </div>
           {error && (
             <p role="alert">
               {error}{' '}
@@ -386,24 +439,6 @@ function DevelopmentSnapshot({
                 : 'Waiting for this scan to settle…'}
             </p>
           )}
-          {report &&
-            (!report.finished ||
-              report.limited ||
-              report.cancelled ||
-              report.diagnostics.length > 0) && (
-              <Notice>
-                Recognition{' '}
-                {report.cancelled
-                  ? 'cancelled'
-                  : report.limited
-                    ? 'limited'
-                    : report.finished
-                      ? 'finished with coverage limits'
-                      : 'incomplete'}
-                . Unknown ownership remains unknown; no tool installation or
-                inactivity is inferred.
-              </Notice>
-            )}
           {!!report?.diagnostics.length && (
             <details>
               <summary>
@@ -559,6 +594,11 @@ function DevelopmentSnapshot({
               aria-label="Selected artifact relationships"
             >
               <h3 className="path-text">{name(selected)}</h3>
+              {hasUncommittedWork(selected.worktree) && (
+                <CautionBadge kind="worktree">
+                  Uncommitted changes would be lost
+                </CautionBadge>
+              )}
               <p>{worktreeState(selected.worktree)}</p>
               <p>
                 Inspection only. Clean, unlocked or old does not mean removable.
@@ -702,6 +742,16 @@ function DevelopmentSnapshot({
               )}
               {inventory && (
                 <>
+                  {persistentCount > 0 && (
+                    <p className="development-alert" role="note">
+                      <CautionBadge kind="persistent">
+                        Persistent container data
+                      </CautionBadge>
+                      {persistentCount} observed resource
+                      {persistentCount === 1 ? '' : 's'} may hold databases or
+                      files that exist nowhere else. Inspection only.
+                    </p>
+                  )}
                   <p>{inventory.accounting}</p>
                   {inventory.items.length === 0 ? (
                     <p>No Docker resources reported by this inventory.</p>
@@ -779,11 +829,16 @@ function ArtifactGroup({
           data-selected={selectedId === artifact.findingId ? 'true' : undefined}
         >
           <th scope="row">
-            <span className="path-text">{name(artifact)}</span>
-            <span className="secondary finding-path path-text">
-              {paths.get(artifact.findingId) ?? 'Path unavailable'} ·{' '}
-              {artifact.findingId}
-            </span>
+            <div className="finding-name">
+              <ArtifactChip artifact={artifact} />
+              <div>
+                <span className="path-text">{name(artifact)}</span>
+                <span className="secondary finding-path path-text">
+                  {paths.get(artifact.findingId) ?? 'Path unavailable'} ·{' '}
+                  {artifact.findingId}
+                </span>
+              </div>
+            </div>
           </th>
           <td>
             {familyLabels[artifact.family]}
@@ -798,6 +853,9 @@ function ArtifactGroup({
             </span>
           </td>
           <td>
+            {hasUncommittedWork(artifact.worktree) && (
+              <CautionBadge kind="worktree">Uncommitted changes</CautionBadge>
+            )}
             <p>
               {artifact.worktree
                 ? worktreeState(artifact.worktree)
@@ -872,13 +930,22 @@ function DockerRows({
             .slice(current * pageSize, (current + 1) * pageSize)
             .map((item) => (
               <tr key={item.artifact.findingId}>
-                <th scope="row" className="path-text">
-                  {item.kind.replaceAll('_', ' ')}
-                  <span className="finding-path">{item.identity}</span>
+                <th scope="row">
+                  <div className="finding-name">
+                    <DockerChip />
+                    <div className="path-text">
+                      {item.kind.replaceAll('_', ' ')}
+                      <span className="finding-path">{item.identity}</span>
+                    </div>
+                  </div>
                 </th>
                 <td>{formatBytes(item.logicalBytes)}</td>
                 <td>
-                  {item.persistent ? 'Persistent data · ' : ''}
+                  {item.persistent && (
+                    <CautionBadge kind="persistent">
+                      Persistent data
+                    </CautionBadge>
+                  )}
                   {item.active === null
                     ? 'Activity unknown'
                     : item.active

@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { formatBytes } from '../scan/accounting';
 import { Notice } from '../shell/primitives';
 import type { DockerItem } from './contract';
+import { CautionBadge } from './presentation';
 
 export function DockerDetails({
   item,
@@ -17,6 +18,9 @@ export function DockerDetails({
     <div className="item-inspection">
       <h3 className="path-text">Docker {item.kind.replaceAll('_', ' ')}</h3>
       <p className="path-text">{item.identity}</p>
+      {item.persistent && (
+        <CautionBadge kind="persistent">Persistent container data</CautionBadge>
+      )}
       <Notice>
         Inspection only. Docker observations are separate from filesystem
         accounting; shared layers and VM storage are not additive or guaranteed
