@@ -258,3 +258,14 @@ and `git diff --cached --check` passed. Imported Docker implementation/tests mat
 approved dev unchanged. Frontend and accepted capped-value behavior are unchanged;
 prior frontend and reviewed native visual proofs are retained. No live Docker
 inventory, UI review/captures, release build, push or hosted CI run was performed.
+
+## Full Disk Access guidance
+
+macOS privacy (TCC) blocks protected folders unless the user grants Full Disk Access. Reclaim detects the missing grant and guides the user; it never requests, bypasses or simulates it. No root privileges, privileged helper or access workaround exists, and granting stays the user's choice.
+
+- **Status** (`access_status`, no arguments): native read-only probes open directory listings of TCC-protected locations (`~/Library/Safari`, `~/Library/Mail`, `/Library/Application Support/com.apple.TCC`) and return `{ fullDiskAccess: 'granted' | 'not_granted' | 'unknown' }`. The first conclusive probe decides: a readable directory is `granted`, a permission error is `not_granted`; missing locations and other errors are inconclusive, and no conclusive probe means `unknown`. Probes read no entry names or file contents and log nothing. The mapping lives in `reclaim-core::access`; the Tauri adapter only resolves the home directory and authorizes the `main` window.
+- **Opener** (`access_open_settings`, no arguments): opens exactly `x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles` through `NSWorkspace`. It is not a generic URL opener; the frontend cannot supply a URL. Failure shows manual steps (Privacy & Security → Full Disk Access).
+- **Card**: shown on first run (before a scan) and in Settings when status is `not_granted` or `unknown`, and in Overview when a scan reports `permission_denied` entries. It explains why access matters, that Reclaim only measures read-only and never changes anything, that granting is optional (the app keeps working with honest partial coverage), and how to grant it. `granted` hides the card (Settings shows a short status line instead). Status is re-checked on mount and every time the window regains focus; no scan is started or auto-run to probe access.
+- **Denied locations**: "Scope and access coverage" lists loaded `permission_denied` entries under "Denied by macOS" as unknown, not empty, with the same Open System Settings action while access is not granted.
+- **Unsigned and development builds**: macOS attaches the grant to the launching binary or terminal, and grants may reset across rebuilds until the app is signed.
+- **Proof**: Rust unit tests cover the status mapping with simulated errors (not the real TCC state); frontend tests cover not granted, granted, unknown, focus re-check, failure fallbacks and denied-location listing. Dev fixture: `?fixture=overview&state=empty|partial&access=not_granted|granted|unknown` with `NODE_ENV=development`.

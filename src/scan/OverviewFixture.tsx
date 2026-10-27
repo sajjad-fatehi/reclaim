@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { appearanceKey } from '../shell/appearance';
+import type { AccessApi, FullDiskAccess } from '../access/contract';
 import { ScanProvider } from './context';
 import { ScanApplication } from './ScanApplication';
 import { createFixtureApi, fixtureLocation, fixtureProgress } from './fixtures';
@@ -208,9 +209,21 @@ export function OverviewFixture(): ReactElement {
         'multivolume',
       ] as const
     ).find((candidate) => candidate === requested) ?? 'partial';
+  const requestedAccess = new URLSearchParams(location.search).get('access');
+  const access: FullDiskAccess =
+    (['granted', 'not_granted', 'unknown'] as const).find(
+      (candidate) => candidate === requestedAccess,
+    ) ?? 'not_granted';
+  const accessApi: AccessApi = {
+    status: async () => access,
+    openSettings: async () => undefined,
+  };
   return (
     <ScanProvider api={createOverviewApi(state)}>
-      <ScanApplication connectionStatus="SYNTHETIC Overview fixture · browser presentation only" />
+      <ScanApplication
+        connectionStatus="SYNTHETIC Overview fixture · browser presentation only"
+        accessApi={accessApi}
+      />
     </ScanProvider>
   );
 }

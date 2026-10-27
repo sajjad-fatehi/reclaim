@@ -14,26 +14,33 @@ import { ReviewProvider } from '../cleanup/ReviewProvider';
 import { Review } from '../cleanup/Review';
 import { useReview } from '../cleanup/useReview';
 import type { CleanupApi } from '../cleanup/contract';
+import { AccessProvider } from '../access/context';
+import { AccessGuidance } from '../access/AccessGuidance';
+import type { AccessApi } from '../access/contract';
 
 export function ScanApplication({
   connectionStatus,
   inspectionApi,
   developmentApi,
   cleanupApi,
+  accessApi,
 }: {
   connectionStatus: string;
   inspectionApi?: InspectionApi | undefined;
   developmentApi?: DevelopmentApi | undefined;
   cleanupApi?: CleanupApi | undefined;
+  accessApi?: AccessApi | undefined;
 }): ReactElement {
   return (
     <ReviewProvider>
-      <ScanApplicationContent
-        connectionStatus={connectionStatus}
-        inspectionApi={inspectionApi}
-        developmentApi={developmentApi}
-        cleanupApi={cleanupApi}
-      />
+      <AccessProvider api={accessApi}>
+        <ScanApplicationContent
+          connectionStatus={connectionStatus}
+          inspectionApi={inspectionApi}
+          developmentApi={developmentApi}
+          cleanupApi={cleanupApi}
+        />
+      </AccessProvider>
     </ReviewProvider>
   );
 }
@@ -72,6 +79,7 @@ function ScanApplicationContent({
         overview: <Overview onInvestigate={() => setDestination('explore')} />,
         settings: (
           <>
+            <AccessGuidance context="settings" />
             <ScanSettings />
             {state.error && <p role="alert">{state.error}</p>}
           </>

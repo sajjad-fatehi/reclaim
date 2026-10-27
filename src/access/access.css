@@ -1,0 +1,65 @@
+.access-card {
+  display: flex;
+  gap: var(--space-medium);
+  padding: var(--space-large);
+  background: var(--glass);
+  backdrop-filter: var(--blur-glass);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+}
+.access-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  background: var(--selection);
+  color: var(--selection-text);
+  border-radius: var(--radius-tile);
+}
+.access-body {
+  display: grid;
+  gap: var(--space-small);
+  min-width: 0;
+  max-width: 44rem;
+}
+.access-body h3,
+.access-body p,
+.access-body ol {
+  margin: 0;
+}
+.access-body ol {
+  padding-left: 1.25rem;
+  color: var(--secondary);
+}
+.access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-small);
+  margin-block: var(--space-small);
+}
+.access-failure {
+  color: var(--danger);
+}
+.access-granted {
+  display: flex;
+  align-items: center;
+  gap: var(--space-small);
+  margin: 0;
+  color: var(--success);
+}
+.access-denied-list {
+  display: grid;
+  gap: var(--space-small);
+  margin-top: var(--space-small);
+}
+.access-denied-list h4,
+.access-denied-list p {
+  margin: 0;
+}
+.access-denied-list ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}

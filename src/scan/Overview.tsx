@@ -13,6 +13,8 @@ import { ScanSettings } from './ScanSettings';
 import { VolumeUsage } from './VolumeUsage';
 import type { ScanSnapshot } from './session';
 import { ReviewButton } from '../cleanup/ReviewButton';
+import { AccessGuidance, OpenSettingsButton } from '../access/AccessGuidance';
+import { useAccess } from '../access/useAccess';
 
 const statusLabels = {
   running: 'Scanning',
@@ -43,6 +45,10 @@ function ScanResults({
   const issues = snapshot.findings.filter(
     (finding) => finding.issue !== null && finding.issue !== 'excluded',
   );
+  const denied = issues.filter(
+    (finding) => finding.issue === 'permission_denied',
+  );
+  const access = useAccess();
   const readable = snapshot.findings.some(
     (finding) =>
       finding.kind === 'file' ||
@@ -241,6 +247,7 @@ function ScanResults({
           </>
         )}
       </section>
+      {denied.length > 0 && <AccessGuidance context="denied" />}
       {attention.length > 0 && (
         <section
           className="attention-panel"
@@ -275,11 +282,37 @@ function ScanResults({
             No symlink descent; mount boundaries and unreadable entries reduce
             coverage.
           </p>
-          {issues.slice(0, 40).map((finding) => (
-            <p className="path-text" key={finding.id}>
-              {finding.displayName}: {finding.issue?.replaceAll('_', ' ')}
-            </p>
-          ))}
+          {denied.length > 0 && (
+            <div className="access-denied-list">
+              <h4>Denied by macOS</h4>
+              <p>
+                macOS refused read access to these locations, so they are
+                unknown, not empty.
+                {access?.status !== 'granted' &&
+                  ' Full Disk Access may let a new scan read them.'}
+              </p>
+              <ul aria-label="Locations macOS denied">
+                {denied.slice(0, 40).map((finding) => (
+                  <li className="path-text" key={finding.id}>
+                    {finding.displayName}
+                  </li>
+                ))}
+              </ul>
+              {access && access.status !== 'granted' && (
+                <div className="access-actions">
+                  <OpenSettingsButton />
+                </div>
+              )}
+            </div>
+          )}
+          {issues
+            .filter((finding) => finding.issue !== 'permission_denied')
+            .slice(0, 40)
+            .map((finding) => (
+              <p className="path-text" key={finding.id}>
+                {finding.displayName}: {finding.issue?.replaceAll('_', ' ')}
+              </p>
+            ))}
           {issues.length > 40 && (
             <p>Additional issues remain available in shared findings.</p>
           )}
@@ -403,6 +436,7 @@ export function Overview({
           <p className="secondary">{elapsed}s elapsed</p>
         </header>
       )}
+      {!snapshot && <AccessGuidance context="first-run" />}
       {!snapshot && <ScanSettings />}
       <Toolbar label="Scan controls">
         <button
