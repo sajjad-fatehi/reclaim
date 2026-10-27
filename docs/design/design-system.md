@@ -2,59 +2,71 @@
 
 [Design index](index.md)
 
-Status: proposed starting values for the user's warm CleanMyMac-inspired direction. These replace the cold Space Layers tokens; the actual implementation may tune them while preserving contrast and the committed reference character. See [reference packet](warm-reference.md). Use system appearance initially; both themes have equal status.
+Status: implemented in `src/shell/tokens.css` as the Atlas direction, a visualization-led desktop canvas. These values supersede the earlier warm plum tokens; [DESIGN.md](../../DESIGN.md) records the shipped tokens and components. Use system appearance initially; both themes have equal status.
 
 ## Color roles
 
 | Semantic role | Light | Dark |
 | --- | --- | --- |
-| Canvas | `#FBF5FA` | `#211626` |
-| Surface | `#FFFDFC` | `#302135` |
-| Raised surface | `#F3E7F2` | `#3C2A40` |
-| Navigation ground | `#38233F` | `#28192F` |
-| Navigation text | `#FFF4FD` | `#FFF4FD` |
-| Primary text | `#34243C` | `#FFF4FD` |
-| Secondary text | `#705775` | `#D6BBD5` |
-| Decorative divider | `#DDC9DF` | `#6A4B6D` |
-| Interactive boundary | `#98739C` | `#B28EB5` |
-| Action / focus | `#8B3A62` | `#FFBAA1` |
-| On action | `#FFFFFF` | `#3F213A` |
-| Selection ground | `#F3D6E7` | `#59374D` |
-| Selection text | `#66304D` | `#FFE3EE` |
-| Warning text | `#92400E` | `#FEC84B` |
-| Danger text | `#A32E40` | `#FFB6BF` |
-| Success text | `#226A4A` | `#8ED5B0` |
+| Canvas | `#FBF5EC` plus peach and lilac glows | `#120E1C` plus violet and plum glows |
+| Surface (opaque panel) | `#FFFCF7` | `#221B34` |
+| Raised surface | `#F4ECE2` | `#2C2342` |
+| Glass / strong glass | `rgb(255 255 255 / .72)` / `.9` | `rgb(255 255 255 / .07)` / `rgb(34 27 52 / .94)` |
+| Edge | `rgb(60 40 90 / .16)` | `rgb(255 255 255 / .14)` |
+| Primary text | `#241A33` | `#F4F0FB` |
+| Secondary text | `#5D5270` | `#BDB4D1` |
+| Control boundary | `#8C7FA3` | `#8F84AB` |
+| Accent fill / accent text | `#5B3FD6` / `#4A2FC0` | `#7A5CF0` / `#C0B0FF` |
+| On accent | `#FFFFFF` | `#FFFFFF` |
+| Selection ground / text | `#E6DEFB` / `#3A2394` | `#3A2D66` / `#E6DCFF` |
+| Warning text / surface | `#7A4A00` / `#FFF0D0` | `#F6CD78` / `#33270E` |
+| Danger text | `#A8261C` | `#FF958B` |
+| Success text | `#0C6B36` | `#86E3A5` |
 
-Warning, danger and success text above is intended on Surface. Introduce background variants only after checking the exact pair. Decorative dividers are not the sole boundary of controls. Use Interactive boundary when the edge itself carries an affordance.
+Warning, danger and success text above is intended on surface or glass over the canvas; check the exact pair before introducing another background. Decorative dividers are not the sole boundary of a control; use the control boundary when the edge carries an affordance.
 
-Proposed data roles use lilac, peach, berry and complementary cool contrast where necessary for chart differentiation; free space remains a clearly labelled neutral field. Supply a persistent text legend, accessible names and distinguishable borders/pattern alternatives. Color never implies deletion eligibility. Unknown is not a warning severity by itself.
+### Data colors
 
-Use a coherent warm gradient/material language at shell and feature-surface scale, original dimensional artwork and soft controlled shadows/highlights. Translucency is optional and must preserve contrast. Keep dense file tables crisp; do not apply decorative blur or glossy texture behind every cell. Expressive color is intentional, not forbidden by generic anti-slop defaults.
+Seven categories (dependencies, build, docker, stores, editor, worktrees, logs) plus unknown, in two independent sets so text contrast and graphic contrast are tuned separately:
+
+| Category | Tile light | Chart light | Tile and chart dark |
+| --- | --- | --- | --- |
+| Dependencies | `#B2BFFF` | `#4A60E6` | `#A3B2FF` |
+| Build | `#FFCD96` | `#C96A00` | `#FFBF80` |
+| Docker | `#93E0EE` | `#0A8FA6` | `#70D9EC` |
+| Stores | `#DCC2FF` | `#8648DC` | `#CDA4FF` |
+| Editor | `#A2E8BB` | `#17924D` | `#86E3A5` |
+| Worktrees | `#FFB6CD` | `#D82F60` | `#FF9DBB` |
+| Logs | `#D5D0DF` | `#716A85` | `#C4BFD3` |
+| Unknown | `#E8E3EE` | `#6D6580` | `#B9B2C9` |
+
+Text on tiles is `#1C1626` in both themes. Chart fills keep at least 3:1 against the light canvas; dark fills are bright on a dark canvas. Every color has a persistent text label. Unknown and outside-scope areas use a hatch, never a plain fill, and color never implies deletion eligibility.
+
+Use translucency and soft glows at shell and panel scale. Keep dense tables crisp: no blur or gradient behind data cells.
 
 ## Typography and number formatting
 
-- UI family: system sans-serif stack, using the macOS system face through CSS. No remote font request.
-- Path/code fallback: system monospace; do not set the whole interface in monospace.
-- Proposed sizes: 12 px metadata, 13 px table data, 14 px body/control, 16 px subsection, 22 px section, 30–34 px key contextual heading. A friendly generous overview can coexist with precise dense inspection; preserve hierarchy and avoid marketing slogans.
-- Weights: 400 body, 500 controls, 600 headings. Use tabular numerals for comparable sizes and right-align numerical columns.
-- Body line-height 1.5; table/control line-height at least 1.35 with room for scaling.
-- Keep byte values numeric internally. Label displayed units consistently; do not silently compare GB and GiB. Expose exact bytes in item details and identify measurement basis/time.
+- Display family: the system rounded face through `ui-rounded`, falling back to system sans, for titles, figures and the brand. UI family: system sans. Path family: system monospace. No web font is loaded; the content security policy permits none, and adding one would need an explicit policy change.
+- Sizes: 11 px count badges, 12 px metadata and status, 14 px body and controls, 17 px subtitles, 30 px screen titles, 34 px figures.
+- Weights: 400 body, 500 controls and labels, 700 display text. Use tabular numerals and right alignment for comparable sizes.
+- Body line-height 1.5; table and control line-height at least 1.35 with room for scaling.
+- Keep byte values numeric internally. Label displayed units consistently; do not silently compare GB and GiB. Expose exact bytes in item details and identify the measurement basis and time.
 
 ## Geometry
 
-- Spacing scale: 4, 8, 12, 16, 24, 32, 48 px.
-- Radius scale: 8 px compact controls, 12 px buttons, 18–24 px feature surfaces and overlays. Use tighter table geometry within the warm shell; keep material/rounding systematic rather than making every row a separate card.
-- Borders: 1 px by default; a visible 2 px focus outline with separation from the control.
-- Icons: one vector family, consistent stroke and 16/20 px sizes. Decorative icons are hidden from assistive technology; icon-only controls have names and tooltips.
-- Use 32–36 px practical desktop control heights where feasible. Ensure at least 24 × 24 CSS px pointer targets or suitable spacing; dense controls still need usable hit areas.
+- Spacing scale: 4, 8, 16, 24, 32 px, with 12 px for tight control padding.
+- Radius scale: pill for buttons, tabs and chips; 12 px fields and choices; 14 px tiles; 20 px panels; 26 px dialogs.
+- Borders: 1 px hairline edges; a visible 3 px focus outline with 2 px offset.
+- Icons: one vector family, 16 to 20 px, consistent stroke. Decorative icons are hidden from assistive technology; icon-only controls have names and tooltips.
+- Controls are at least 40 px tall; the 36 px navigation tab sits inside a padded pill, which keeps every target at least 24 × 24 CSS px with spacing.
 
 ## States and motion
 
 Define default, hover, pressed, focus-visible, selected, disabled, pending and invalid states for interactive components. Disabled state includes real semantics and an explanation where its reason is not obvious.
 
-The signature interaction links a selected usage segment to its list and inspector. It preserves context and has an equivalent textual/keyboard route. Bar changes reflect actual measurements; no theatrical counting animation or invented scan percentage.
+The signature interaction links a selected chart slice or tile to its list and inspector. It preserves context and has an equivalent textual/keyboard route. Bar changes reflect actual measurements; no theatrical counting animation or invented scan percentage.
 
-Motion is an intended part of the interface's character, not limited to hover fades. Use coordinated navigation, inspector, selection and scan feedback as specified in [Icons and motion](icons-and-motion.md). Proposed timing ranges are 100–150 ms for immediate feedback, 160–240 ms for state changes, and 220–320 ms for panels and view continuity. Keep exits faster than entrances and interactions available throughout. Reduced motion preserves clear feedback with minimal spatial movement. No scroll-jacking or distracting background loops.
+Motion is an intended part of the interface's character, not limited to hover fades. Use coordinated navigation, inspector, selection and scan feedback as specified in [Icons and motion](icons-and-motion.md). Shipped durations are 120 ms for immediate feedback, 200 ms for state changes, 320 ms for panels and 800 ms for chart sweeps, with an out-curve and a spring curve reserved for navigation and buttons (see [Icons and motion](icons-and-motion.md)). Keep exits faster than entrances and interactions available throughout. Reduced motion preserves clear feedback with minimal spatial movement. No scroll-jacking or distracting background loops.
 
 ## Accessibility contract
 
@@ -67,6 +79,6 @@ Motion is an intended part of the interface's character, not limited to hover fa
 
 ## Ownership and implementation boundary
 
-When implemented, semantic tokens belong in one shared frontend theme source. Screens consume roles rather than per-screen colors. Keep domain eligibility and filesystem authority in Rust; frontend status styling cannot grant permission to delete.
+Semantic tokens belong in one shared frontend theme source, `src/shell/tokens.css`. Screens consume roles rather than per-screen colors. Keep domain eligibility and filesystem authority in Rust; frontend status styling cannot grant permission to delete.
 
-No executable CSS, component package, font dependency, chart library or token generator is added by this documentation phase.
+The foundation adds no font, chart, animation or token-generator dependency.

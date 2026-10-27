@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { AppShell } from '../shell/AppShell';
-import type { Destination } from '../shell/AppShell';
+import type { Destination, ScanStatus } from '../shell/AppShell';
 import { Explore } from '../explore/Explore';
 import { Development } from '../development/Development';
 import type { DevelopmentApi } from '../development/contract';
 import type { InspectionApi } from '../explore/contract';
 import { useScanSession } from './useScanSession';
+import type { ScanState } from './session';
 import { Overview } from './Overview';
 import { ScanSettings } from './ScanSettings';
 import { ReviewProvider } from '../cleanup/ReviewProvider';
@@ -51,7 +52,6 @@ function ScanApplicationContent({
   const { state, session } = useScanSession();
   const review = useReview();
   const [destination, setDestination] = useState<Destination>('overview');
-  const progress = state.snapshot?.progress;
   return (
     <AppShell
       connectionStatus={connectionStatus}
@@ -65,18 +65,8 @@ function ScanApplicationContent({
           void session.save();
         },
       }}
-      context={
-        <span className="toolbar">
-          {progress
-            ? `Generation ${progress.generation} · ${progress.status}${state.stale ? ' · stale' : ''}`
-            : 'Scan not started'}
-          {!!review?.selections.length && (
-            <button onClick={() => setDestination('review')}>
-              Review selection ({review.selections.length})
-            </button>
-          )}
-        </span>
-      }
+      scanStatus={describeScanStatus(state)}
+      reviewCount={review?.selections.length ?? 0}
       views={{
         review: <Review active={destination === 'review'} api={cleanupApi} />,
         overview: <Overview onInvestigate={() => setDestination('explore')} />,
@@ -120,4 +110,22 @@ function ScanApplicationContent({
       }}
     />
   );
+}
+
+const statusLabels = {
+  running: 'Scanning',
+  complete: 'Scan complete',
+  partial: 'Partial coverage',
+  cancelled: 'Scan cancelled',
+  failed: 'Scan failed',
+} as const;
+
+function describeScanStatus(state: ScanState): ScanStatus {
+  const progress = state.snapshot?.progress;
+  if (!progress) return { label: 'Scan not started', tone: 'idle' };
+  const label = `${statusLabels[progress.status]}${state.stale ? ' · stale' : ''}`;
+  if (progress.status === 'running') return { label, tone: 'active' };
+  if (progress.status === 'complete' && !state.stale)
+    return { label, tone: 'idle' };
+  return { label, tone: 'caution' };
 }

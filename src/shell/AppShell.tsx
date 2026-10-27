@@ -7,6 +7,7 @@ import { GearSix } from '@phosphor-icons/react/GearSix';
 import { Monitor } from '@phosphor-icons/react/Monitor';
 import { Moon } from '@phosphor-icons/react/Moon';
 import { Sun } from '@phosphor-icons/react/Sun';
+import { Warning } from '@phosphor-icons/react/Warning';
 import { ArrowRight } from '@phosphor-icons/react/ArrowRight';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
@@ -58,10 +59,20 @@ const destinations = [
   },
 ] as const;
 export type Destination = (typeof destinations)[number]['id'];
+const primaryDestinations = destinations.filter(
+  (entry) => entry.id !== 'settings',
+);
+
+export type ScanStatusTone = 'idle' | 'active' | 'caution';
+export interface ScanStatus {
+  label: string;
+  tone: ScanStatusTone;
+}
 
 export interface AppShellProps {
   views?: Partial<Record<Destination, ReactNode>>;
-  context?: ReactNode;
+  scanStatus?: ScanStatus;
+  reviewCount?: number;
   connectionStatus: string;
   appearance?: AppearanceState;
   destination?: Destination;
@@ -114,7 +125,8 @@ function ViewSlot({
 
 export function AppShell({
   views = {},
-  context,
+  scanStatus = { label: 'Scan not started', tone: 'idle' },
+  reviewCount = 0,
   connectionStatus,
   appearance,
   destination: controlledDestination,
@@ -127,34 +139,6 @@ export function AppShell({
   const { preference, persistenceError, changeAppearance } =
     useAppearance(appearance);
   const mainReference = useRef<HTMLElement>(null);
-  const navigationReference = useRef<HTMLElement>(null);
-
-  useLayoutEffect(() => {
-    const navigation = navigationReference.current;
-    if (!navigation) return;
-    function alignIndicator(): void {
-      const selected = navigation?.querySelector<HTMLButtonElement>(
-        '[aria-current="page"]',
-      );
-      if (!selected) return;
-      navigation?.style.setProperty(
-        '--indicator-top',
-        `${selected.offsetTop}px`,
-      );
-      navigation?.style.setProperty(
-        '--indicator-height',
-        `${selected.offsetHeight}px`,
-      );
-    }
-    alignIndicator();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(alignIndicator);
-    observer.observe(navigation);
-    navigation
-      .querySelectorAll('button')
-      .forEach((button) => observer.observe(button));
-    return () => observer.disconnect();
-  }, [destination]);
 
   return (
     <div className="app-shell" data-destination={destination}>
@@ -165,58 +149,68 @@ export function AppShell({
       >
         Skip to content
       </a>
-      <aside className="navigation-rail" aria-label="Application sidebar">
+      <header className="window-header">
         <div className="brand">
-          <span className="brand-symbol">
-            <HardDrives size={24} aria-hidden="true" />
-          </span>
+          <span className="brand-symbol" aria-hidden="true" />
           <span>Reclaim</span>
         </div>
-        <nav ref={navigationReference} aria-label="Main navigation">
-          <div className="navigation-indicator" aria-hidden="true" />
-          {destinations.map(({ id, label, icon: Icon }) => (
+        <nav className="navigation-pill" aria-label="Main navigation">
+          {primaryDestinations.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
-              className={`navigation-item navigation-${id}`}
+              className="navigation-tab"
               aria-current={destination === id ? 'page' : undefined}
               aria-controls={`view-${id}`}
               onClick={() => setDestination(id)}
             >
-              <span className="navigation-icon">
-                <Icon
-                  size={20}
-                  weight={destination === id ? 'fill' : 'regular'}
-                  aria-hidden="true"
-                />
-              </span>
+              <Icon
+                size={18}
+                weight={destination === id ? 'fill' : 'regular'}
+                aria-hidden="true"
+              />
               <span>{label}</span>
+              {id === 'review' && reviewCount > 0 && (
+                <span className="navigation-count">
+                  <span aria-hidden="true">{reviewCount}</span>
+                  <span className="visually-hidden">
+                    {reviewCount} selected
+                  </span>
+                </span>
+              )}
             </button>
           ))}
         </nav>
-        <p className="sidebar-note">
-          Local by design.
-          <br />
-          Your files stay yours.
-        </p>
-      </aside>
-      <main id="workspace" ref={mainReference} tabIndex={-1}>
-        <header className="workspace-header">
-          <h1>
-            {destinations.find((entry) => entry.id === destination)?.label}
-          </h1>
-          <div className="scan-context">
-            {context ?? (
-              <>
-                <HardDrives size={20} aria-hidden="true" />
-                <span>
-                  No volume selected{' '}
-                  <span className="context-detail">· Scan not started</span>
-                </span>
-              </>
+        <div className="window-status">
+          <span className={`status-chip status-${scanStatus.tone}`}>
+            {scanStatus.tone === 'caution' ? (
+              <Warning size={16} aria-hidden="true" />
+            ) : (
+              <HardDrives size={16} aria-hidden="true" />
             )}
-          </div>
-        </header>
+            <span>{scanStatus.label}</span>
+          </span>
+          <button
+            type="button"
+            className="round-button"
+            aria-current={destination === 'settings' ? 'page' : undefined}
+            aria-controls="view-settings"
+            aria-label="Settings"
+            title="Settings"
+            onClick={() => setDestination('settings')}
+          >
+            <GearSix
+              size={18}
+              weight={destination === 'settings' ? 'fill' : 'regular'}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      </header>
+      <main id="workspace" ref={mainReference} tabIndex={-1}>
+        <h1 className="visually-hidden">
+          {destinations.find((entry) => entry.id === destination)?.label}
+        </h1>
         <div className="view-stack">
           {destinations.map(({ id, label, icon: Icon, title, description }) => (
             <div

@@ -10,7 +10,7 @@ Confirmed by the user:
 - Overview, Explore, Development, and Review & Clean as the main sections.
 - English product copy initially.
 - Suggested scan locations are reviewed and edited before the user starts scanning.
-- **Warm, modern, playful/fantastical desktop design inspired by CleanMyMac's craft** as the latest visual direction. This supersedes Space Layers.
+- **Atlas** as the current visual direction: a visualization-led canvas with floating pill navigation, glass panels, warm and violet grounds and expressive, bounded motion. It supersedes the warm plum direction and Space Layers; the shipped tokens are recorded in [DESIGN.md](../../DESIGN.md).
 - Expressive, coherent icons and authored motion are desired parts of the interface, not optional finishing decoration.
 
 The detailed layouts, tokens, copy and keyboard choices below are a proposed implementation specification. They still require rendered validation; they are not a claim of user approval for every detail or of tested accessibility.
@@ -19,9 +19,9 @@ The detailed layouts, tokens, copy and keyboard choices below are a proposed imp
 
 Make unexplained storage inspectable. Let people move from a volume's usage to a path, its owner, the evidence and the consequences of removal without losing their place.
 
-Use a warm plum/lilac/peach world with sculptural original artwork, friendly color, tactile depth and coordinated motion. The user's pinned CleanMyMac reference wins over the earlier geological slate/teal/ochre proposal. A segmented usage strip still links selection to the corresponding list and inspector because it explains real data, not because the old aesthetic remains binding. Follow [the verified visual reference packet](warm-reference.md).
+Use the Atlas world: glass panels on a warm cream or deep violet canvas, a color per kind of storage shared by every chart and label, and coordinated bounded motion. A selected chart slice or tile links to its list row and inspector because it explains real data. The earlier [warm reference](warm-reference.md) is superseded and kept only as history.
 
-Assumed usage scene: someone investigating storage pressure on a laptop in ordinary daytime or evening light. Follow system light/dark appearance and keep both equally legible. Warmth and expression apply to both themes; the app should feel welcoming rather than like a cold administrative console.
+Assumed usage scene: someone investigating storage pressure on a laptop in ordinary daytime or evening light. Follow system light/dark appearance and keep both equally legible. Expression applies to both themes; the app should feel welcoming rather than like a cold administrative console.
 
 ## Specification map
 
@@ -30,7 +30,7 @@ Assumed usage scene: someone investigating storage pressure on a laptop in ordin
 - [Layouts and component inventory](layouts.md)
 - [Proposed design system](design-system.md)
 - [Icons and motion](icons-and-motion.md)
-- [Warm visual direction and verified references](warm-reference.md)
+- [Superseded warm visual direction (history)](warm-reference.md)
 - [Built shell design system](../../DESIGN.md)
 
 ## Method and anti-slop rules
