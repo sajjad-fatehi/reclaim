@@ -411,7 +411,7 @@ mod tests {
                 &fixture.directory,
                 &plan_id,
                 confirmed,
-                |target| {
+                |target, _control| {
                     let PlannedTarget::Filesystem(target) = target else {
                         panic!("filesystem fixture only")
                     };

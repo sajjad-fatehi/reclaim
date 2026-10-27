@@ -63,7 +63,10 @@ cannot approve. Single in-flight execution; progress/status is native-owned.
 
 Persist validated bounded intent before any dispatch. Storage failure stops pending
 work; persist each outcome before dispatching another item. Cancellation stops
-pending work only. Outcomes: Removed, Skipped, Failed, Changed, Unknown. Once bytes
+pending work only. Recheck cancellation and the native plan deadline after
+filesystem revalidation and after Docker fresh checks, immediately before dispatch.
+Eligible Docker plans must use the shared executor and persist their actual scoped
+removal outcomes, including across restart. Outcomes: Removed, Skipped, Failed, Changed, Unknown. Once bytes
 may have reached a tool or Trash may have run, never claim an error proves unchanged.
 Retries require fresh planning/revalidation; never replay plans after restart.
 
@@ -124,6 +127,18 @@ separately from item measurements and are not attributed to cleanup. Moving into
 Trash generally retains storage until Trash is emptied outside this app.
 
 Current verification:
+
+Shared-executor review fixes: the native Docker plan → execution → restarted-history
+regression first reproduced Changed instead of Removed. Deterministic callbacks and
+controlled clocks also reproduced dispatch after cancellation during filesystem
+revalidation and DELETE after cancellation during Docker fresh checks. The executor
+now dispatches eligible Docker plans through the checked removal path and rechecks
+pending cancellation/expiry after revalidation; Docker repeats the guard immediately
+before DELETE. Both cancellation and expiry cases pass without sleeps. Focused
+`cargo test -p reclaim-desktop cleanup --locked` (16 tests) and
+`cargo test -p reclaim-desktop docker::removal --locked` (4 tests) passed, along with
+`cargo clippy -p reclaim-desktop --all-targets --locked -- -D warnings` and Rust
+formatting. Docker proof uses only stub transport, not live destructive operations.
 
 - `cargo test -p reclaim-desktop cleanup::execution --locked`: actual platform Trash
   of npm dependencies and Cargo output; intact source/secret/outside sentinels;

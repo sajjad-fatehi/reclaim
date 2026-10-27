@@ -120,12 +120,16 @@ pub(super) fn remove_checked(
     transport: &impl Transport,
     home: &Path,
     expected: &RemovalPlan,
+    control: &crate::cleanup::execution::DispatchControl<'_>,
 ) -> (Outcome, String) {
     let mut comparison = expected.clone();
     comparison.socket_identity = None;
     match removal_snapshot(transport, home, &expected.identity) {
         Ok(current) if current == comparison && expected.socket_unchanged() => {}
         _ => return (Outcome::Changed, "Docker context, endpoint, daemon, image, version or references changed. No removal dispatched; create a fresh plan.".into()),
+    }
+    if let Some(outcome) = control.pending_outcome() {
+        return outcome;
     }
     let result = transport.get(
         &expected.endpoint,
@@ -166,6 +170,7 @@ mod tests {
         tagged: Cell<bool>,
         failure: Cell<bool>,
         malformed: Cell<bool>,
+        after_usage: RefCell<Option<Box<dyn FnOnce()>>>,
     }
     fn identity() -> String {
         format!("sha256:{}", "a".repeat(64))
@@ -179,6 +184,7 @@ mod tests {
             tagged: Cell::new(false),
             failure: Cell::new(false),
             malformed: Cell::new(false),
+            after_usage: RefCell::new(None),
         }
     }
     impl Transport for Stub {
@@ -217,6 +223,9 @@ mod tests {
                 Request::Usage(version) => {
                     assert_eq!(version, "1.48");
                     self.calls.borrow_mut().push("GET /system/df".into());
+                    if let Some(action) = self.after_usage.borrow_mut().take() {
+                        action();
+                    }
                     serde_json::json!({"Images":[{"Id":identity(),"Size":100,"Containers":0,"SharedSize":0}],"Containers":[],"Volumes":[],"BuildCache":[]})
                 }
                 Request::DeleteImage(version, selected) => {
@@ -238,11 +247,84 @@ mod tests {
         }
     }
     #[test]
+    fn cancellation_or_expiry_during_docker_fresh_checks_prevents_delete() {
+        for cancel in [true, false] {
+            let fixture = stub();
+            let home = Path::new("/SYNTHETIC");
+            let plan = removal_snapshot(&fixture, home, &identity()).unwrap();
+            let cancelled = std::sync::Arc::new(AtomicBool::new(false));
+            let clock = std::rc::Rc::new(Cell::new(Instant::now()));
+            let deadline = clock.get() + Duration::from_secs(120);
+            let changed_cancelled = cancelled.clone();
+            let changed_clock = clock.clone();
+            *fixture.after_usage.borrow_mut() = Some(Box::new(move || {
+                if cancel {
+                    changed_cancelled.store(true, Ordering::SeqCst);
+                } else {
+                    changed_clock.set(deadline);
+                }
+            }));
+            let now = || clock.get();
+            let control =
+                crate::cleanup::execution::DispatchControl::new(&cancelled, deadline, &now);
+            let result = remove_checked(&fixture, home, &plan, &control);
+            assert!(
+                !fixture
+                    .calls
+                    .borrow()
+                    .iter()
+                    .any(|call| call.starts_with("DELETE ")),
+                "must check again after fresh Docker observations"
+            );
+            assert_eq!(
+                result.0,
+                if cancel {
+                    Outcome::Skipped
+                } else {
+                    Outcome::Changed
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn native_plan_executes_exact_docker_removal_and_persists_history() {
+        let fixture = stub();
+        let home = Path::new("/SYNTHETIC");
+        let plan = removal_snapshot(&fixture, home, &identity()).unwrap();
+        crate::cleanup::execution::tests::assert_docker_plan_execution(plan, |target, control| {
+            let crate::cleanup::execution::PlannedTarget::Docker(plan) = target else {
+                panic!("Docker only")
+            };
+            remove_checked(&fixture, home, plan, control)
+        });
+        assert_eq!(
+            fixture
+                .calls
+                .borrow()
+                .iter()
+                .filter(|call| call.starts_with("DELETE "))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
     fn exact_route_fresh_context_daemon_references_and_no_force_prune_retry() {
         let fixture = stub();
         let plan = removal_snapshot(&fixture, Path::new("/SYNTHETIC"), &identity()).unwrap();
         assert_eq!(
-            remove_checked(&fixture, Path::new("/SYNTHETIC"), &plan).0,
+            remove_checked(
+                &fixture,
+                Path::new("/SYNTHETIC"),
+                &plan,
+                &crate::cleanup::execution::DispatchControl::new(
+                    &AtomicBool::new(false),
+                    Instant::now() + Duration::from_secs(120),
+                    &Instant::now
+                )
+            )
+            .0,
             Outcome::Removed
         );
         assert_eq!(
@@ -264,7 +346,17 @@ mod tests {
                 _ => fixture.tagged.set(true),
             }
             assert_eq!(
-                remove_checked(&fixture, Path::new("/SYNTHETIC"), &plan).0,
+                remove_checked(
+                    &fixture,
+                    Path::new("/SYNTHETIC"),
+                    &plan,
+                    &crate::cleanup::execution::DispatchControl::new(
+                        &AtomicBool::new(false),
+                        Instant::now() + Duration::from_secs(120),
+                        &Instant::now
+                    )
+                )
+                .0,
                 Outcome::Changed
             );
             assert!(!fixture
@@ -289,7 +381,16 @@ mod tests {
             let plan = removal_snapshot(&fixture, Path::new("/SYNTHETIC"), &identity()).unwrap();
             fixture.failure.set(!malformed);
             fixture.malformed.set(malformed);
-            let result = remove_checked(&fixture, Path::new("/SYNTHETIC"), &plan);
+            let result = remove_checked(
+                &fixture,
+                Path::new("/SYNTHETIC"),
+                &plan,
+                &crate::cleanup::execution::DispatchControl::new(
+                    &AtomicBool::new(false),
+                    Instant::now() + Duration::from_secs(120),
+                    &Instant::now,
+                ),
+            );
             assert_eq!(result.0, Outcome::Unknown);
             assert!(result.1.contains("Partial"));
             assert_eq!(

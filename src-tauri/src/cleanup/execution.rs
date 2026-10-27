@@ -40,6 +40,42 @@ pub(super) struct ExecutionState {
     pub execution: Option<Execution>,
 }
 
+pub(crate) struct DispatchControl<'control> {
+    cancelled: &'control AtomicBool,
+    deadline: Instant,
+    now: &'control dyn Fn() -> Instant,
+}
+
+impl<'control> DispatchControl<'control> {
+    pub(crate) fn new(
+        cancelled: &'control AtomicBool,
+        deadline: Instant,
+        now: &'control dyn Fn() -> Instant,
+    ) -> Self {
+        Self {
+            cancelled,
+            deadline,
+            now,
+        }
+    }
+
+    pub(crate) fn pending_outcome(&self) -> Option<(Outcome, String)> {
+        if (self.now)() >= self.deadline {
+            return Some((
+                Outcome::Changed,
+                "Plan expired before dispatch. Create a fresh review.".into(),
+            ));
+        }
+        if self.cancelled.load(Ordering::SeqCst) {
+            return Some((
+                Outcome::Skipped,
+                "Cancelled before dispatch. Completed operations were not undone.".into(),
+            ));
+        }
+        None
+    }
+}
+
 impl CleanupService {
     pub(super) fn plan(
         &self,
@@ -144,8 +180,8 @@ impl CleanupService {
         plan_id: &str,
         confirmed: bool,
     ) -> BoundaryResult<Execution> {
-        self.execute_with(scanner, directory, plan_id, confirmed, |target| {
-            remove(target, docker)
+        self.execute_with(scanner, directory, plan_id, confirmed, |target, control| {
+            remove(target, docker, control)
         })
     }
 
@@ -155,7 +191,38 @@ impl CleanupService {
         directory: &Path,
         plan_id: &str,
         confirmed: bool,
-        mut dispatch: impl FnMut(&PlannedTarget) -> (Outcome, String),
+        dispatch: impl FnMut(&PlannedTarget, &DispatchControl<'_>) -> (Outcome, String),
+    ) -> BoundaryResult<Execution> {
+        self.execute_using(
+            directory,
+            plan_id,
+            confirmed,
+            dispatch,
+            |entry| match (&entry.selection, &entry.target) {
+                (
+                    Selection::Filesystem {
+                        generation,
+                        finding_id,
+                    },
+                    PlannedTarget::Filesystem(expected),
+                ) => scanner
+                    .cleanup_target(*generation, finding_id)
+                    .is_ok_and(|current| current == *expected),
+                (Selection::Docker { .. }, PlannedTarget::Docker(_)) => true,
+                _ => false,
+            },
+            Instant::now,
+        )
+    }
+
+    fn execute_using(
+        &self,
+        directory: &Path,
+        plan_id: &str,
+        confirmed: bool,
+        mut dispatch: impl FnMut(&PlannedTarget, &DispatchControl<'_>) -> (Outcome, String),
+        mut revalidate: impl FnMut(&PlanEntry) -> bool,
+        now: impl Fn() -> Instant,
     ) -> BoundaryResult<Execution> {
         let plan = {
             let mut state = lock(&self.state);
@@ -167,7 +234,7 @@ impl CleanupService {
                 return Err(ErrorCode::Busy.into());
             }
             let plan = state.plan.as_ref().ok_or(ErrorCode::InvalidRequest)?;
-            if !confirmed || plan.id != plan_id || Instant::now() >= plan.deadline {
+            if !confirmed || plan.id != plan_id || now() >= plan.deadline {
                 return Err(ErrorCode::InvalidRequest.into());
             }
             let plan = state.plan.take().ok_or(ErrorCode::InvalidRequest)?;
@@ -195,6 +262,7 @@ impl CleanupService {
             });
             plan
         };
+        let control = DispatchControl::new(&self.cancelled, plan.deadline, &now);
         let mut execution = self.status().ok_or(ErrorCode::Internal)?;
         let mut volumes = std::collections::BTreeMap::new();
         for entry in &plan.entries {
@@ -246,27 +314,16 @@ impl CleanupService {
                     Outcome::Skipped,
                     "Not dispatched: operation history could not be persisted.".into(),
                 )
-            } else if Instant::now() >= plan.deadline {
-                (
-                    Outcome::Changed,
-                    "Plan expired before dispatch. Create a fresh review.".into(),
-                )
-            } else if self.cancelled.load(Ordering::SeqCst) {
-                (
-                    Outcome::Skipped,
-                    "Cancelled before dispatch. Completed operations were not undone.".into(),
-                )
+            } else if let Some(outcome) = control.pending_outcome() {
+                outcome
+            } else if !revalidate(entry) {
+                (Outcome::Changed, "Observed target, ancestor, evidence, scope or safety state changed. Rescan and create a new plan.".into())
+            } else if let Some(outcome) = control.pending_outcome() {
+                outcome
             } else {
-                match (&entry.selection, &entry.target) {
-                    (Selection::Filesystem { generation, finding_id }, PlannedTarget::Filesystem(expected)) => {
-                        match scanner.cleanup_target(*generation, finding_id) {
-                            Ok(current) if current == *expected => dispatch(&entry.target),
-                            _ => (Outcome::Changed, "Observed target, ancestor, evidence, scope or safety state changed. Rescan and create a new plan.".into()),
-                        }
-                    }
-                    _ => (Outcome::Changed, "Unsupported target. No operation dispatched.".into()),
-                }
+                dispatch(&entry.target, &control)
             };
+
             execution.operation.items[position].outcome = result.0;
             execution.operation.items[position].explanation = result.1;
             if persisted {
@@ -341,10 +398,14 @@ pub(crate) fn trash(path: &Path) -> Result<PathBuf, ()> {
     resulting.and_then(|url| url.to_file_path()).ok_or(())
 }
 
-fn remove(target: &PlannedTarget, docker: &DockerService) -> (Outcome, String) {
+fn remove(
+    target: &PlannedTarget,
+    docker: &DockerService,
+    control: &DispatchControl<'_>,
+) -> (Outcome, String) {
     let target = match target {
         PlannedTarget::Filesystem(target) => target,
-        PlannedTarget::Docker(plan) => return docker.remove_image(plan),
+        PlannedTarget::Docker(plan) => return docker.remove_image(plan, control),
     };
     if target.method == Method::Trash {
         return match trash(&target.path) {
@@ -406,7 +467,7 @@ fn remove(target: &PlannedTarget, docker: &DockerService) -> (Outcome, String) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::scan::cleanup_review_tests::{fixture, select};
     use std::fs;
@@ -443,7 +504,7 @@ mod tests {
         let cleanup = CleanupService::default();
         let plan = review(&cleanup, &scanner, generation, &["node_modules", "target"]);
         let mut moved = Vec::new();
-        let result = cleanup.execute_with(&scanner, &history_path, &plan, true, |target| {
+        let result = cleanup.execute_with(&scanner, &history_path, &plan, true, |target, _control| {
             let PlannedTarget::Filesystem(target) = target else { panic!("filesystem fixture only") };
             let location = trash(&target.path).expect("actual NSFileManager Trash must succeed on disposable fixture");
             assert!(location.exists());
@@ -500,19 +561,19 @@ mod tests {
         let cleanup = CleanupService::default();
         let plan = review(&cleanup, &scanner, generation, &["node_modules"]);
         assert!(cleanup
-            .execute_with(&scanner, &directory, "forged", true, |_| panic!(
+            .execute_with(&scanner, &directory, "forged", true, |_, _control| panic!(
                 "not dispatched"
             ))
             .is_err());
         assert!(cleanup
-            .execute_with(&scanner, &directory, &plan, false, |_| panic!(
+            .execute_with(&scanner, &directory, &plan, false, |_, _control| panic!(
                 "not dispatched"
             ))
             .is_err());
         lock(&cleanup.state).plan.as_mut().unwrap().deadline =
             Instant::now() - Duration::from_secs(1);
         assert!(cleanup
-            .execute_with(&scanner, &directory, &plan, true, |_| panic!(
+            .execute_with(&scanner, &directory, &plan, true, |_, _control| panic!(
                 "not dispatched"
             ))
             .is_err());
@@ -523,13 +584,13 @@ mod tests {
         )
         .unwrap();
         let result = cleanup
-            .execute_with(&scanner, &directory, &plan, true, |_| {
+            .execute_with(&scanner, &directory, &plan, true, |_, _control| {
                 panic!("not dispatched")
             })
             .unwrap();
         assert_eq!(result.operation.items[0].outcome, Outcome::Changed);
         assert!(cleanup
-            .execute_with(&scanner, &directory, &plan, true, |_| panic!(
+            .execute_with(&scanner, &directory, &plan, true, |_, _control| panic!(
                 "not dispatched"
             ))
             .is_err());
@@ -563,7 +624,7 @@ mod tests {
                     &history.path().canonicalize().unwrap(),
                     &plan,
                     true,
-                    |_| panic!("not dispatched"),
+                    |_, _control| panic!("not dispatched"),
                 )
                 .unwrap();
             assert_eq!(result.operation.items[0].outcome, Outcome::Changed);
@@ -585,10 +646,12 @@ mod tests {
         let plan = review(&cleanup, &scanner, generation, &["node_modules", "target"]);
         let mut calls = 0;
         let result = cleanup
-            .execute_with(&scanner, &directory, &plan, true, |_| {
+            .execute_with(&scanner, &directory, &plan, true, |_, _control| {
                 calls += 1;
                 assert!(cleanup
-                    .execute_with(&scanner, &directory, &plan, true, |_| panic!("duplicate"))
+                    .execute_with(&scanner, &directory, &plan, true, |_, _control| panic!(
+                        "duplicate"
+                    ))
                     .is_err());
                 assert!(cleanup.clear_history(&directory).is_err());
                 cleanup.cancel();
@@ -603,7 +666,7 @@ mod tests {
         assert_eq!(result.operation.items[1].outcome, Outcome::Skipped);
         let retry = review(&cleanup, &scanner, generation, &["target"]);
         let result = cleanup
-            .execute_with(&scanner, &directory, &retry, true, |_| {
+            .execute_with(&scanner, &directory, &retry, true, |_, _control| {
                 (Outcome::Failed, "Synthetic no-dispatch tool error".into())
             })
             .unwrap();
@@ -627,7 +690,7 @@ mod tests {
             let mut calls = 0;
             let parked = directory.with_extension("parked");
             let result = cleanup
-                .execute_with(&scanner, &directory, &plan, true, |_| {
+                .execute_with(&scanner, &directory, &plan, true, |_, _control| {
                     calls += 1;
                     fs::rename(&directory, &parked).unwrap();
                     fs::write(&directory, b"blocked history path").unwrap();
@@ -772,6 +835,129 @@ mod tests {
         assert_eq!(fs::read(main.join("tracked")).unwrap(), b"source");
     }
     #[test]
+    fn cancellation_or_expiry_during_filesystem_revalidation_prevents_dispatch() {
+        for cancel in [true, false] {
+            let (temporary, scanner, generation) = fixture();
+            let history = tempfile::tempdir().unwrap();
+            let directory = history.path().canonicalize().unwrap();
+            let cleanup = CleanupService::default();
+            let plan = review(&cleanup, &scanner, generation, &["node_modules"]);
+            let clock = std::cell::Cell::new(Instant::now());
+            let dispatched = std::cell::Cell::new(false);
+            let result = cleanup
+                .execute_using(
+                    &directory,
+                    &plan,
+                    true,
+                    |_, _control| {
+                        dispatched.set(true);
+                        (Outcome::Removed, "unexpected dispatch".into())
+                    },
+                    |entry| {
+                        let (
+                            Selection::Filesystem {
+                                generation,
+                                finding_id,
+                            },
+                            PlannedTarget::Filesystem(expected),
+                        ) = (&entry.selection, &entry.target)
+                        else {
+                            panic!("filesystem only")
+                        };
+                        let current = scanner.cleanup_target(*generation, finding_id).unwrap();
+                        if cancel {
+                            cleanup.cancel();
+                        } else {
+                            clock.set(clock.get() + Duration::from_secs(1000));
+                        }
+                        current == *expected
+                    },
+                    || clock.get(),
+                )
+                .unwrap();
+            assert!(!dispatched.get(), "must check again after revalidation");
+            let expected = if cancel {
+                Outcome::Skipped
+            } else {
+                Outcome::Changed
+            };
+            assert_eq!(result.operation.items[0].outcome, expected);
+            assert_eq!(
+                CleanupService::default()
+                    .history(&directory)
+                    .history
+                    .unwrap()
+                    .operations[0]
+                    .items[0]
+                    .outcome,
+                expected
+            );
+            assert!(temporary.path().join("node_modules").exists());
+        }
+    }
+
+    pub(crate) fn assert_docker_plan_execution(
+        target: crate::docker::removal::RemovalPlan,
+        dispatch: impl FnMut(&PlannedTarget, &DispatchControl<'_>) -> (Outcome, String),
+    ) {
+        let cleanup = CleanupService::default();
+        let history = tempfile::tempdir().unwrap();
+        let directory = history.path().canonicalize().unwrap();
+        let selection = Selection::Docker {
+            finding_id: "synthetic-image-finding".into(),
+        };
+        let mut items = vec![ReviewItem {
+            selection: selection.clone(),
+            target: target.identity.clone(),
+            logical_bytes: "100".into(),
+            allocated_bytes: None,
+            measured_at_ms: Some(now_ms()),
+            artifact: None,
+            unavailable_reason: String::new(),
+            changed: false,
+            method: Some(Method::DockerImage),
+        }];
+        let (plan_id, _) = cleanup
+            .plan(
+                &mut items,
+                vec![PlanEntry {
+                    selection,
+                    label: target.identity.clone(),
+                    target: PlannedTarget::Docker(target),
+                }],
+            )
+            .unwrap();
+        let plan_id = plan_id.unwrap();
+        let result = cleanup
+            .execute_with(
+                &ScanService::default(),
+                &directory,
+                &plan_id,
+                true,
+                dispatch,
+            )
+            .unwrap();
+        assert_eq!(result.operation.items[0].outcome, Outcome::Removed);
+        let restarted = CleanupService::default()
+            .history(&directory)
+            .history
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(&restarted.operations[0]).unwrap(),
+            serde_json::to_value(&result.operation).unwrap()
+        );
+        assert!(cleanup
+            .execute_with(
+                &ScanService::default(),
+                &directory,
+                &plan_id,
+                true,
+                |_, _control| panic!("replayed plan")
+            )
+            .is_err());
+    }
+
+    #[test]
     fn cancellation_before_worker_claim_prevents_dispatch() {
         let (_temporary, scanner, generation) = fixture();
         let history = tempfile::tempdir().unwrap();
@@ -784,7 +970,7 @@ mod tests {
                 &history.path().canonicalize().unwrap(),
                 &plan,
                 true,
-                |_| panic!("cancelled pending request must never dispatch")
+                |_, _control| panic!("cancelled pending request must never dispatch")
             )
             .is_err());
     }

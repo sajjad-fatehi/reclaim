@@ -306,6 +306,7 @@ impl DockerService {
     pub(crate) fn remove_image(
         &self,
         expected: &RemovalPlan,
+        control: &crate::cleanup::execution::DispatchControl<'_>,
     ) -> (reclaim_core::cleanup::Outcome, String) {
         use reclaim_core::cleanup::Outcome;
         if self.busy.swap(true, Ordering::SeqCst) {
@@ -315,8 +316,8 @@ impl DockerService {
             );
         }
         self.cancelled.store(false, Ordering::SeqCst);
-        let result =
-            self.with_local(|transport, home| Ok(remove_checked(transport, home, expected)));
+        let result = self
+            .with_local(|transport, home| Ok(remove_checked(transport, home, expected, control)));
         self.busy.store(false, Ordering::SeqCst);
         result.unwrap_or((
             Outcome::Changed,
