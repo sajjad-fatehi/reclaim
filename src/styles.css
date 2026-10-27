@@ -300,7 +300,8 @@ main {
 /* Shared primitives. */
 .glass-panel,
 .notice,
-.settings-content,
+.settings-card,
+.scan-settings,
 .scan-results,
 .development-detail,
 .inspector {
@@ -503,13 +504,20 @@ main {
 
 /* Settings. */
 .settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-large);
   max-width: 48rem;
-  padding: var(--space-section);
 }
-.settings-content > h2 {
+.settings-card,
+.scan-settings {
+  padding: var(--space-section);
+  box-shadow: var(--shadow-panel);
+}
+.settings-card > h2 {
   font-size: 1.25rem;
 }
-.settings-content > p {
+.settings-card > p {
   color: var(--secondary);
   margin-top: var(--space-small);
 }
@@ -619,7 +627,8 @@ main {
     display: inline;
   }
   .section-introduction,
-  .settings-content {
+  .settings-card,
+  .scan-settings {
     padding: var(--space-large);
   }
   .appearance-option {
@@ -657,18 +666,36 @@ main {
 .overview-content > .toolbar .primary-action {
   margin-top: 0;
 }
-.scan-settings {
-  padding-block: var(--space-large);
-}
-.scan-settings h2:not(:first-child),
 .scan-results > h2 {
   margin-top: var(--space-large);
+}
+.settings-heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-small);
+}
+.settings-heading h2 {
+  font-size: 1.25rem;
+}
+.settings-heading p {
+  color: var(--secondary);
+}
+.scan-settings > .settings-heading ~ .settings-heading {
+  margin-top: var(--space-medium);
+  padding-top: var(--space-large);
+  border-top: 1px solid var(--divider);
 }
 .scope-list,
 .exclusion-list {
   padding: 0;
   margin: 0;
   list-style: none;
+}
+.scope-list,
+.exclusion-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-small);
 }
 .scope-list li,
 .exclusion-list li {
@@ -677,12 +704,86 @@ main {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-medium);
-  padding-block: var(--space-medium);
-  border-bottom: 1px solid var(--divider);
+  padding: 12px var(--space-medium);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-tile);
+  background: var(--glass-strong);
+  animation: row-arrive var(--duration-selection) var(--ease-out) both;
+}
+.location-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-control);
+  background: var(--tile-stores);
+  color: var(--tile-text);
+}
+.location-icon.missing {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+.location-status {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--secondary);
+  font-size: var(--text-small);
+}
+.location-status svg {
+  margin-top: 1px;
+  color: var(--success);
+}
+.location-status.caution,
+.location-status.caution svg {
+  color: var(--warning);
+}
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-small);
+}
+.suggestions-label {
+  color: var(--secondary);
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+.scan-settings .suggestion-chip {
+  max-width: 100%;
+  border-style: dashed;
+  border-color: var(--boundary);
+  background: transparent;
+  color: var(--accent-text);
+  text-align: left;
+}
+.field-error {
+  display: flex;
+  gap: var(--space-small);
+  align-items: flex-start;
+  padding: 10px var(--space-medium);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-control);
+  background: var(--warning-surface);
+  color: var(--danger);
+  font-weight: 500;
+}
+.scan-settings input[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger);
+}
+.scan-settings .primary-action {
+  margin-top: 0;
+}
+@keyframes row-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 .scope-list li > div {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 14rem;
 }
 .scope-list strong,
 .scope-list .secondary,

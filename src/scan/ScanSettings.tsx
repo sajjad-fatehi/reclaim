@@ -1,6 +1,11 @@
 import { useId, useState } from 'react';
 import type { ReactElement } from 'react';
+import { CheckCircle } from '@phosphor-icons/react/CheckCircle';
+import { Folder } from '@phosphor-icons/react/Folder';
 import { FolderPlus } from '@phosphor-icons/react/FolderPlus';
+import { Plus } from '@phosphor-icons/react/Plus';
+import { WarningCircle } from '@phosphor-icons/react/WarningCircle';
+import { X } from '@phosphor-icons/react/X';
 import { Notice, Toolbar } from '../shell/primitives';
 import { useScanSession } from './useScanSession';
 import { validExclusion } from './session';
@@ -31,12 +36,14 @@ export function ScanSettings(): ReactElement {
       className="scan-settings"
       aria-label="Scan locations and exclusions"
     >
-      <h2>Scan locations</h2>
-      <p>
-        Find what is using your disk space. Review locations before starting;
-        Read-only scanning measures filesystem metadata and selectively reads
-        project/tool metadata for recognition. No files are changed.
-      </p>
+      <header className="settings-heading">
+        <h2>Scan locations</h2>
+        <p>
+          Find what is using your disk space. Review locations before starting;
+          Read-only scanning measures filesystem metadata and selectively reads
+          project/tool metadata for recognition. No files are changed.
+        </p>
+      </header>
       {state.loading ? (
         <p>Loading saved settings and suggested locations…</p>
       ) : (
@@ -55,9 +62,28 @@ export function ScanSettings(): ReactElement {
           <ul className="scope-list">
             {preferences.roots.map((root, index) => (
               <li key={root.location?.id ?? root.key}>
+                <span
+                  className={
+                    root.location ? 'location-icon' : 'location-icon missing'
+                  }
+                  aria-hidden="true"
+                >
+                  <Folder size={20} />
+                </span>
                 <div>
                   <strong className="path-text">{root.displayPath}</strong>
-                  <span className="secondary">
+                  <span
+                    className={
+                      root.location
+                        ? 'location-status'
+                        : 'location-status caution'
+                    }
+                  >
+                    {root.location ? (
+                      <CheckCircle size={16} aria-hidden="true" />
+                    ) : (
+                      <WarningCircle size={16} aria-hidden="true" />
+                    )}
                     {root.location
                       ? 'Available at selection · access checked again on start'
                       : 'Unavailable · volume missing, moved folder or access required'}
@@ -74,11 +100,44 @@ export function ScanSettings(): ReactElement {
                   }
                   aria-label={`Remove ${root.displayPath}`}
                 >
-                  Remove
+                  <X size={16} aria-hidden="true" /> Remove
                 </button>
               </li>
             ))}
           </ul>
+          {suggestions.length > 0 && (
+            <div
+              className="suggestions"
+              role="group"
+              aria-label="Suggested locations"
+            >
+              <span className="suggestions-label">Suggested</span>
+              {suggestions.map((candidate) => (
+                <button
+                  type="button"
+                  className="suggestion-chip"
+                  key={candidate.id}
+                  disabled={preferences.roots.length >= 16}
+                  aria-label={`Add suggested location ${candidate.displayPath}`}
+                  onClick={() =>
+                    session.editPreferences({
+                      roots: [
+                        ...preferences.roots,
+                        {
+                          key: null,
+                          displayPath: candidate.displayPath,
+                          location: candidate,
+                        },
+                      ],
+                    })
+                  }
+                >
+                  <Plus size={16} aria-hidden="true" />
+                  <span className="path-text">{candidate.displayPath}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <Toolbar label="Manage scan locations">
             <button
               type="button"
@@ -87,38 +146,8 @@ export function ScanSettings(): ReactElement {
             >
               <FolderPlus size={18} aria-hidden="true" /> Add folder…
             </button>
-            {suggestions.length > 0 && (
-              <label>
-                Add suggestion{' '}
-                <select
-                  aria-label="Add suggested location"
-                  value=""
-                  disabled={preferences.roots.length >= 16}
-                  onChange={(event) => {
-                    const location = suggestions.find(
-                      (candidate) => candidate.id === event.target.value,
-                    );
-                    if (location)
-                      session.editPreferences({
-                        roots: [
-                          ...preferences.roots,
-                          {
-                            key: null,
-                            displayPath: location.displayPath,
-                            location,
-                          },
-                        ],
-                      });
-                  }}
-                >
-                  <option value="">Choose location…</option>
-                  {suggestions.map((candidate) => (
-                    <option value={candidate.id} key={candidate.id}>
-                      {candidate.displayPath}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {preferences.roots.length >= 16 && (
+              <span className="secondary">Location limit reached (16).</span>
             )}
           </Toolbar>
           {state.unavailableCount > 0 && (
@@ -132,8 +161,10 @@ export function ScanSettings(): ReactElement {
             their own selection. No permission bypass or automatic scan on
             launch.
           </p>
-          <h2>Exclusions</h2>
-          <p id={`${inputId}-help`}>
+          <header className="settings-heading">
+            <h2>Exclusions</h2>
+          </header>
+          <p id={`${inputId}-help`} className="secondary">
             Literal, case-sensitive paths relative to each selected root.
             Subtree skips that entry and descendants; Exact file skips only that
             file, leaving directories traversable. No wildcards.
@@ -156,7 +187,7 @@ export function ScanSettings(): ReactElement {
                     })
                   }
                 >
-                  Remove
+                  <X size={16} aria-hidden="true" /> Remove
                 </button>
               </li>
             ))}
@@ -196,10 +227,14 @@ export function ScanSettings(): ReactElement {
               <input
                 id={inputId}
                 value={relativePath}
-                onChange={(event) => setRelativePath(event.target.value)}
+                onChange={(event) => {
+                  setRelativePath(event.target.value);
+                  setValidation(null);
+                }}
                 placeholder="Library/Caches"
                 maxLength={1024}
-                aria-describedby={`${inputId}-help`}
+                aria-invalid={validation ? true : undefined}
+                aria-describedby={`${inputId}-help${validation ? ` ${inputId}-error` : ''}`}
               />
             </label>
             <label>
@@ -214,11 +249,18 @@ export function ScanSettings(): ReactElement {
                 <option value="exact">Exact file</option>
               </select>
             </label>
-            <button disabled={preferences.exclusions.length >= 64}>
+            <button
+              className="primary-action"
+              disabled={preferences.exclusions.length >= 64}
+            >
               Add exclusion
             </button>
           </form>
-          {validation && <p role="alert">{validation}</p>}
+          {validation && (
+            <p role="alert" id={`${inputId}-error`} className="field-error">
+              <WarningCircle size={18} aria-hidden="true" /> {validation}
+            </p>
+          )}
           <p className="secondary">
             {running
               ? 'Scan running. Edits apply only to the next scan; current scope stays fixed.'
@@ -227,6 +269,7 @@ export function ScanSettings(): ReactElement {
           <Toolbar label="Save scan settings">
             <button
               type="button"
+              className="primary-action"
               onClick={() => void session.save()}
               disabled={state.saving}
             >
