@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reclaim redesign — compare directions</title>
+<style>
+  :root { color-scheme: dark; --bg: #111114; --panel: #1b1b20; --line: #2c2c33; --text: #ececf1; --muted: #9a9aa6; --accent: #7c6cff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { position: sticky; top: 0; z-index: 2; display: flex; gap: 16px; align-items: center; padding: 12px 20px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  nav { display: flex; gap: 4px; padding: 3px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; }
+  nav button { font: inherit; color: var(--muted); background: none; border: 0; padding: 5px 12px; border-radius: 6px; cursor: pointer; }
+  nav button[aria-pressed="true"] { color: var(--text); background: var(--line); }
+  nav button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .links { margin-left: auto; display: flex; gap: 14px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  main { padding: 20px; }
+  .grid { display: grid; grid-template-columns: 120px repeat(3, 1fr); gap: 12px; align-items: start; }
+  .grid .head { font-weight: 600; padding: 4px 0; }
+  .grid .head small { display: block; color: var(--muted); font-weight: 400; }
+  .grid .row-label { color: var(--muted); padding-top: 6px; }
+  figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  figure img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+  figure.empty { display: grid; place-items: center; min-height: 80px; color: var(--muted); font-size: 12px; }
+  .live { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .live.single { grid-template-columns: 1fr; }
+  .live section { display: flex; flex-direction: column; gap: 6px; }
+  .live iframe { width: 100%; height: calc(100vh - 120px); border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+  [hidden] { display: none !important; }
+  dialog { padding: 0; border: 0; background: transparent; max-width: 96vw; max-height: 96vh; }
+  dialog::backdrop { background: #000c; }
+  dialog img { display: block; max-width: 96vw; max-height: 92vh; border-radius: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Reclaim redesign</h1>
+  <nav aria-label="View">
+    <button data-view="gallery" aria-pressed="true">Screenshots</button>
+    <button data-view="live-all" aria-pressed="false">Live · side by side</button>
+    <button data-view="live-a" aria-pressed="false">A · Quiet Glass</button>
+    <button data-view="live-b" aria-pressed="false">B · Console</button>
+    <button data-view="live-c" aria-pressed="false">C · Atlas</button>
+  </nav>
+  <div class="links">
+    <a href="a-quiet-glass.html" target="_blank">A ↗</a>
+    <a href="b-console.html" target="_blank">B ↗</a>
+    <a href="c-atlas.html" target="_blank">C ↗</a>
+    <a href="README.md" target="_blank">README ↗</a>
+  </div>
+</header>
+
+<main>
+  <div id="gallery" class="grid"></div>
+  <div id="live" class="live" hidden></div>
+</main>
+
+<dialog id="zoom"></dialog>
+
+<script>
+  const directions = [
+    { key: "a", name: "A · Quiet Glass", note: "Native macOS, calm", file: "a-quiet-glass.html" },
+    { key: "b", name: "B · Console", note: "Dense pro tool, keyboard-first", file: "b-console.html" },
+    { key: "c", name: "C · Atlas", note: "Visualization-led, expressive", file: "c-atlas.html" },
+  ];
+  const screens = ["overview-light", "overview-dark", "explore-light", "explore-dark", "review-light", "review-dark", "palette-dark"];
+  const available = new Set([
+    "a-overview-light", "a-overview-dark", "a-explore-light", "a-explore-dark", "a-review-light",
+    "b-overview-light", "b-overview-dark", "b-explore-light", "b-explore-dark", "b-review-dark", "b-palette-dark",
+    "c-overview-light", "c-overview-dark", "c-explore-light", "c-explore-dark", "c-review-dark",
+  ]);
+
+  const gallery = document.getElementById("gallery");
+  const live = document.getElementById("live");
+  const zoom = document.getElementById("zoom");
+
+  function renderGallery() {
+    gallery.append(document.createElement("div"));
+    for (const direction of directions) {
+      const head = document.createElement("div");
+      head.className = "head";
+      head.innerHTML = `${direction.name}<small>${direction.note}</small>`;
+      gallery.append(head);
+    }
+    for (const screen of screens) {
+      const hasAny = directions.some((direction) => available.has(`${direction.key}-${screen}`));
+      if (!hasAny) continue;
+      const label = document.createElement("div");
+      label.className = "row-label";
+      label.textContent = screen.replace("-", " · ");
+      gallery.append(label);
+      for (const direction of directions) {
+        const name = `${direction.key}-${screen}`;
+        const figure = document.createElement("figure");
+        if (!available.has(name)) {
+          figure.className = "empty";
+          figure.textContent = "Not captured — open live";
+        } else {
+          const image = document.createElement("img");
+          image.src = `screenshots/${name}.png`;
+          image.alt = `${direction.name} ${screen}`;
+          image.loading = "lazy";
+          image.addEventListener("click", () => openZoom(image));
+          figure.append(image);
+        }
+        gallery.append(figure);
+      }
+    }
+  }
+
+  function openZoom(image) {
+    const zoomed = zoom.querySelector("img") ?? zoom.appendChild(document.createElement("img"));
+    zoomed.src = image.src;
+    zoomed.alt = image.alt;
+    zoom.showModal();
+  }
+  zoom.addEventListener("click", () => zoom.close());
+
+  function renderLive(keys) {
+    live.replaceChildren();
+    live.classList.toggle("single", keys.length === 1);
+    for (const direction of directions.filter((item) => keys.includes(item.key))) {
+      const section = document.createElement("section");
+      section.innerHTML = `<div class="head">${direction.name}</div><iframe src="${direction.file}" title="${direction.name}"></iframe>`;
+      live.append(section);
+    }
+  }
+
+  function showView(view) {
+    for (const button of document.querySelectorAll("nav button")) {
+      button.setAttribute("aria-pressed", String(button.dataset.view === view));
+    }
+    const isGallery = view === "gallery";
+    gallery.hidden = !isGallery;
+    live.hidden = isGallery;
+    if (isGallery) return;
+    renderLive(view === "live-all" ? ["a", "b", "c"] : [view.slice(-1)]);
+  }
+
+  for (const button of document.querySelectorAll("nav button")) {
+    button.addEventListener("click", () => showView(button.dataset.view));
+  }
+  renderGallery();
+</script>
+</body>
+</html>
