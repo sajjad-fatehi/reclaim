@@ -1,38 +1,183 @@
 # Review, limited cleanup and operation history
 
-Follow [shared requirements](index.md), [interaction flows](../../design/interaction-flows.md), the delivered scanner/artifact contracts and all completed views. This is the only feature authorized to introduce mutation; verification still never touches real user data.
+Status: implementation contract updated 2026-10-27 under current user decision
+(note `5b88330e-9534-48f8-b606-be0a1628faf6`). This section supersedes the
+historical absolute concurrent-substitution gate and review-only disposition below.
+Follow [shared requirements](index.md) and [workflow](../../development/workflow.md).
 
-## Eligibility policy
+## Current authorization and safety model
 
-- Source, user documents, credentials, arbitrary logs/tmp content, editor history/chats/settings, persistent volumes, running resources, main repositories and unknown artifacts are not generic cleanup targets.
-- Support a small explicit allowlist of verified regenerable project outputs/dependencies and tool caches with an accurately described removal method. Prefer recoverable platform Trash for eligible filesystem items where supported; disclose when recovery is not supported. Never silently fall back from failed Trash to permanent deletion.
-- Shared stores/runtimes need evidence of tool-supported scope and consequences. Do not run broad autoremove/prune/uninstall, remove installed toolchains or claim that cache deletion is risk-free. Unsupported stores remain inspection-only with a clear reason.
-- A linked Git worktree may be removed only through Git's supported non-force mechanism after validating registry membership, non-main status, absence of tracked/untracked/ignored data, locks and concurrent changes. Otherwise block and explain; never recursively delete a worktree directory as a substitute.
-- Docker cleanup is limited to explicitly selected, supported unreferenced image identities after fresh local-daemon/context/reference checks, with no force flag. No volumes, containers or broad prune. If an installed version cannot guarantee this scope, mark the method unsupported. Persistent/build-cache inventory remains useful without blanket removal.
+Explicitly selected allowlisted targets, exact review and separate confirmation,
+immediate native scope/identity/change revalidation, then normal macOS Trash are
+approved. Descriptor/no-follow checks reject observed substitutions; the subsequent
+pathname operation is not atomic with those checks. Concurrent changes in that
+interval remain a residual risk. No guarantee of zero races is made. No permanent
+recursive-delete fallback, Trash emptying, force, broad prune or automatic cleanup.
 
-## Native execution boundary
+## Eligibility and plan contract
 
-- Review plans are native-owned, bounded, short-lived and tied to exact finding identity, session, scope, measurement time, method and consequences. Frontend submits opaque IDs, never executable commands, trusted sizes or arbitrary paths.
-- Revalidate targets immediately before mutation. Reject traversal, symlinks/ancestor substitution, out-of-scope aliases, identity changes and new safety-relevant changes. Use filesystem/platform primitives that enforce the boundary under concurrent replacement; a prior path check alone is insufficient. Fail closed if the intended method cannot preserve this invariant.
-- Prevent duplicate/concurrent execution of the same target. Handle parent/child overlap without double-removal; user confirmation for an old plan never authorizes a changed replacement.
-- Execute only after a separate explicit confirmation. Cancellation stops pending work safely; completed work is not described as undone. Report Removed, Skipped, Failed or Changed per item and bounded useful errors. Never hide partial failures or retry by widening scope.
+- Native allowlist: verified project `node_modules` with installer evidence and
+  Cargo `target` with `cargo_rustc_fingerprint` evidence. Other families remain
+  inspection-only until their specific method is implemented. These directories
+  may contain locally edited generated files; confirmation explains that these
+  move too and regeneration may require network/toolchain/inputs.
+- Exact recognized directory only, complete current measurement, no alias, root
+  target, protected descendant, nested repository/worktree, excluded/unreadable
+  subtree, symlink escape or unknown identity. Source outside selected generated
+  targets, credentials, personal/editor/persistent data, logs/tmp and runtimes stay
+  protected. Recognition alone never authorizes a mutation.
+- Native plans bind opaque IDs, generation, scope, full target/ancestor and evidence
+  observations, method and consequences. Maximum 100 targets, one current plan,
+  120-second expiry, consumed once. Parent/child overlap is skipped without expanding
+  selection. UI paths/sizes/commands are never trusted input.
+- Immediately before dispatch, verify current generation/scope, all target subtree
+  identities/types/sizes/timestamps and evidence/ancestor observations, current
+  recognition/protection and exclusions. Known changes require fresh scan/review.
+  Checks are bounded by the existing scanner limits. No contents are logged.
 
-## UI and history
+## Methods
 
-- Wire actual Add to review actions from eligible Explore/Development/Overview contexts to shared selection. Navigation/filtering must not silently expand it; stale/unsupported items cannot masquerade as eligible.
-- Review shows exact target, measured size/basis/time, owner/evidence, method, removal consequences, regeneration costs and reversibility. Final confirmation is specific and Cancel-focused; Enter does not accidentally approve permanent deletion.
-- During execution show truthful progress and prevent duplicate submission. Provide scoped retry only after new eligibility checks. Supported recovery appears only when actually available.
-- Show measured volume free-space change separately from selected apparent sizes, qualifying concurrent activity and APFS. Unknown recoverable amounts remain unknown.
-- Persist a bounded local operation history inside Review & Clean using a minimal appropriate store with validated atomic writes. Include time, method and per-item outcomes; avoid unnecessary sensitive data. Offer clear-history, retain actual unfinished/unknown outcomes after interruption and never automatically replay pending deletions on restart.
+- Filesystem: `NSFileManager.trashItemAtURL`; success means moved to Trash, not freed
+  physical space. Recovery uses macOS Trash / Put Back where available; no app-driven
+  restore promise. Failure never falls back to permanent removal. Ambiguous effects
+  are Unknown and require inspection before a fresh review.
+- Git: only registry-verified, non-main, unlocked linked worktrees with fresh clean
+  tracked/untracked/ignored checks, supported local configuration, using official
+  non-force `git worktree remove`. No recursive-delete substitute. Nonrecoverable.
+- Docker: only native-observed immutable unreferenced images, fresh supported local
+  context/endpoint/daemon and container/reference observations; fixed exact-ID API
+  removal with `force=false&noprune=true`, no automatic retry or endpoint fallback.
+  Containers, volumes and broad build-cache removal remain prohibited. Fresh checks
+  are ordinary checks, not cross-client atomic transactions. Conflict/errors may
+  follow partial untagging; ambiguous responses stay Unknown. Tool-native methods
+  require their own explicit nonrecoverable confirmation, separate from Trash.
 
-## Acceptance and proof
+## Execution, UI and history
 
-- Disposable-fixture tests cover allowlisted success and negative cases: protected source/credentials, forged IDs, outside-scope paths, symlink/ancestor replacement, changed targets, overlapping selections, double submission, partial failure, cancellation, corrupt/interrupted history and safe recovery failure. Verify outside-scope sentinels survive.
-- Worktree tests include ignored/untracked data and no-force behavior. Docker deletion uses stubbed commands, validates local identity/reference scope and cannot issue volume/container/broad-prune operations.
-- Native fixture UI flow proves selection → review → explicit confirmation → actual permitted fixture operation → truthful outcomes/history across restart. No scanning or deleting the user's private files to make screenshots.
-- Focused Rust/transport/UI tests, security-boundary checks and required CI pass. Report any narrowly unsupported method honestly; do not replace promised safe behavior with a generic recursive delete.
+Eligible items offer Add to review; unsupported selections show reasons. Selection
+stays explicit across views/filters; no default broad selection. Review displays
+exact target, measurements/basis/time, evidence/owner, method, consequence and
+recovery. Confirmation names exact executable targets, starts on Cancel and requires
+an additional explicit acknowledgement for irreversible methods. Enter on Cancel
+cannot approve. Single in-flight execution; progress/status is native-owned.
 
-## Implementation acceptance record (2026-10-27)
+Persist validated bounded intent before any dispatch. Storage failure stops pending
+work; persist each outcome before dispatching another item. Cancellation stops
+pending work only. Outcomes: Removed, Skipped, Failed, Changed, Unknown. Once bytes
+may have reached a tool or Trash may have run, never claim an error proves unchanged.
+Retries require fresh planning/revalidation; never replay plans after restart.
+
+Reuse private descriptor-relative atomic history (50 operations, 100 items each,
+4 MiB maximum, mode 0600). Interrupted Pending becomes Unknown. Corruption stays
+visible; clearing affects records only and is blocked during execution. Report
+free-space observations separately, qualifying concurrent activity/APFS; selected
+apparent sizes are not reclaimed bytes.
+
+## Acceptance
+
+Disposable fixtures/stubbed tools only. Mandatory actual platform Trash of eligible
+npm/Cargo fixture, source/secret/outside sentinels intact, truthful recovery/history
+across restart. Negative proof: forged/stale/expired plans, double submit, observed
+target/ancestor/symlink change, excluded/out-of-scope references, overlap, Trash
+failure/no fallback, partial/cancel, fresh retry, corrupt/interrupted/failed history.
+Tool fixtures prove exact non-force scope, clean/locked/main/untracked/ignored guards,
+local context/daemon/reference changes and partial/ambiguous errors. App tests do not
+prove daemon atomicity. Native UI/IPC and frontend confirmation/outcome proof required;
+CUA capture gaps remain explicit and do not waive automated native proof.
+
+## Delivered native transport and proof
+
+`cleanup_review({ selections })` resolves 1–100 exact native references, returns
+per-item method/explanation and an optional native plan ID/expiry. One plan per
+service is retained; another review invalidates the old plan. Mixed removal methods
+require separate review/confirmation; unsupported selections never expand the plan.
+`cleanup_execute({ planId, confirmed: true })` consumes that plan; `cleanup_status`
+returns native progress; `cleanup_cancel` requests stopping pending work. Only the
+local main window receives these scoped commands. There is no path/command endpoint.
+
+Whole target subtrees are compared to scan observations and exact plan metadata,
+including native identities/types, file sizes, modification/ctime nanoseconds,
+ancestor identities and recognizer evidence. Interior symlinks are observed without
+following them and carried as links by Trash; target/ancestor symlinks cannot redirect
+validation. Protected or incompletely measured descendants block cleanup. Exclusion
+or registration changes cannot grant old-plan authority. Shared aliases remain
+conservative inspection-only. Revalidation is bounded, and not an atomic platform
+transaction. Git status/registry checks reuse the existing confined recognizer;
+Git removal uses the fixed native executable, isolated configuration and no force.
+
+Docker removal currently supports only Docker 28 with API 1.48 and classic `overlay2`
+storage, exact lowercase sha256 IDs, empty tags/digests and zero observed image and
+container references. The fixed local endpoint, daemon ID/version and observed socket
+identity are rechecked before one DELETE with no retry, proxy, redirects or fallback.
+Other versions/backends and referenced/tagged images remain inspection-only. Local
+proxy/backend changes and reference arrivals between checks and dispatch remain
+residual risks; the older daemon research is not claimed disproven. HTTP errors,
+conflicts, truncated/malformed success or incomplete deletion evidence are Unknown,
+never proof of unchanged state. Only a complete response naming the selected ID
+Deleted supports Removed; layer records are not extra reclaimed images/bytes.
+
+Operation intent is persisted before dispatch; every outcome is persisted before
+another item starts. Write failure stops pending work and is visible in live results.
+The old pending on-disk record becomes Unknown after restart. Live native progress
+is distinguished from interrupted history. Free-volume observations are stored
+separately from item measurements and are not attributed to cleanup. Moving into
+Trash generally retains storage until Trash is emptied outside this app.
+
+Current verification:
+
+- `cargo test -p reclaim-desktop cleanup::execution --locked`: actual platform Trash
+  of npm dependencies and Cargo output; intact source/secret/outside sentinels;
+  plan forgery/expiry/confirmation/replay, observed substitutions, cancellation,
+  partial errors/fresh retry, pre-dispatch and post-dispatch persistence failures.
+- `cargo test -p reclaim-desktop linked_git_worktree --locked`: disposable Git
+  registry fixture, main/locked/dirty/untracked/ignored rejection and actual clean
+  supported non-force removal; committed main-repository source remains intact.
+- `cargo test -p reclaim-desktop docker::removal --locked`: stub-only exact fixed
+  DELETE scope; fresh context/daemon/tag/container rejection; partial/error response
+  remains Unknown and never retries. No live Docker destructive verification.
+- `cargo test -p reclaim-desktop native_ipc_plan_confirmation --locked`: mocked
+  Tauri transport to native review/confirmation, actual platform Trash, replay
+  rejection and restarted history. Only history-directory injection/fixture dispatch
+  instrumentation differ from production; no frontend-authorized paths.
+- `rtk vitest run src/cleanup/cleanup.test.tsx`: selection/eligibility, safe initial
+  focus, Cancel without dispatch, exact-target confirmation, irreversible consent,
+  duplicate suppression, cancellation and outcomes/persistence error presentation.
+- `npm run build:web` followed by
+  `cargo run -p reclaim-desktop --example cleanup_fixture --features tauri/custom-protocol --locked -- --smoke`:
+  actual production React + native WebView IPC passed selection → eligible review →
+  Cancel-focused confirmation (Cancel first proved no dispatch) → actual fixture
+  Trash → truthful outcome/history after native service restart. Native assertions
+  verified source/secret/outside sentinels intact. This leaves only disposable QA
+  artifacts in platform Trash; it never enumerates or empties the user's Trash.
+
+The fixture overrides history storage to a disposable directory for **all** history
+and execution commands, so QA never writes production history. Its picker offers
+only synthetic roots. Without `--smoke`, no scan/removal starts automatically.
+Native CUA now verifies actual selection, Cancel focus, confirmation, Trash outcomes
+and history in 1440×1000 dark and light captures. Final captures are attached to the
+task (`reclaim-cleanup-review-final.png`, `reclaim-cleanup-confirm-final.png`,
+`reclaim-cleanup-outcomes-final.png`, `reclaim-cleanup-outcomes-light.png`). The initial
+assetless manual fixture was corrected by rebuilding with `tauri/custom-protocol`
+after tests. A compact resize attempt did not change the 1440×1000 window; compact,
+200% enlargement and VoiceOver speech are not claimed. Finish review found no
+material visual defects; its stale PRODUCT.md status finding was corrected.
+
+`rtk npm run check` passed formatting, lint, TypeScript, 49 frontend and 68 Rust tests.
+After the final copy/header adjustment, the 5 cleanup interaction tests and web build
+passed again. A subsequently reproduced pre-worker cancellation race was fixed by
+serializing cancellation with plan claiming and invalidating unclaimed plans;
+`cargo test -p reclaim-desktop cleanup::execution --locked` passed all 7 execution
+tests, including the added regression, and final all-target Clippy passed. Earlier
+passing proof for unchanged tests is retained (69 total Rust tests now exist).
+`rtk npm run build` produced the local ad-hoc signed application after the fix;
+notarization and hosted CI are manager-owned delivery steps, not local claims.
+
+## Historical partial-delivery record
+
+The record below describes `bcd60a1` and its former stricter policy. It is preserved
+as historical evidence, not current eligibility or a blocking concurrency requirement.
+
+### Historical implementation acceptance record (2026-10-27)
 
 This task preserves all requirements above. Recognition and Finder handoff are not
 mutation authority. Reuse `ScanService::with_terminal_scan`, native finding identities,
@@ -62,7 +207,7 @@ have no expected-inode argument. No filesystem/worktree mutation implementation 
 accepted until a scoped primitive is demonstrated or the manager resolves this
 contract conflict. This record does not waive the required eligible fixture flow.
 
-## Partial delivery and native contract
+### Historical partial delivery and native contract
 
 Manager disposition (2026-10-27): filesystem Trash and Git worktree removal remain
 unsupported. Their mandatory successful filesystem fixture removal is replaced by
@@ -110,7 +255,7 @@ no actual cleanup success is claimed.
   empty unless existing valid records are present. Synthetic interrupted records
   occur only in the explicitly labelled native fixture.
 
-### Missing mutation guarantees
+#### Historical missing mutation guarantees
 
 macOS SDK `NSFileManager::trashItemAtURL` exposes a URL operation, without an
 expected-inode condition. `renameatx_np` no-follow/beneath/exclusive flags do not
@@ -133,7 +278,7 @@ per-item mutation results, cancellation/partial-failure/revalidated retry, actua
 recovery and permitted-operation fixture flow remain unmet. Never substitute a fake
 successful operation for these requirements.
 
-### Verification of partial delivery
+#### Historical verification of partial delivery
 
 - `cargo test -p reclaim-core cleanup --locked`: bounded history validation and
   pending-to-unknown normalization, preserving completed outcomes.

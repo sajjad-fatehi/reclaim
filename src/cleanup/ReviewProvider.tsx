@@ -28,7 +28,7 @@ export function ReviewProvider({
             return [...current, selection];
           });
           setMessage(
-            'Item queued for eligibility review. No removal authorized. Maximum 100 items.',
+            'Item queued for eligibility review. Selection alone grants no removal authority. Maximum 100 items.',
           );
         },
         remove: (selection) => {

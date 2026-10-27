@@ -1,4 +1,4 @@
-//! Fixed metadata commands only. No generic process, endpoint or shell IPC.
+//! Fixed native Docker routes only. No generic process, endpoint or shell IPC.
 use reclaim_core::docker::{self, Failure, Inventory};
 use serde::Serialize;
 use std::io::Read;
@@ -36,6 +36,10 @@ trait Transport {
 enum Request<'version> {
     Version,
     Usage(&'version str),
+    Info,
+    Image(&'version str, &'version str),
+    Containers(&'version str),
+    DeleteImage(&'version str, &'version str),
 }
 
 struct LocalTransport<'service> {
@@ -180,6 +184,12 @@ impl Transport for LocalTransport<'_> {
             .ok_or(Failure::UnsupportedContext)?;
         let route = match request {
             Request::Version => "/version".into(),
+            Request::Info => "/info".into(),
+            Request::Image(version, identity) => format!("/v{version}/images/{identity}/json"),
+            Request::Containers(version) => format!("/v{version}/containers/json?all=true"),
+            Request::DeleteImage(version, identity) => {
+                format!("/v{version}/images/{identity}?force=false&noprune=true")
+            }
             Request::Usage(version) => format!("/v{version}/system/df"),
         };
         self.run(
@@ -198,6 +208,14 @@ impl Transport for LocalTransport<'_> {
                 "5",
                 "--max-filesize",
                 "8388608",
+                "--request",
+                if matches!(request, Request::DeleteImage(_, _)) {
+                    "DELETE"
+                } else {
+                    "GET"
+                },
+                "--retry",
+                "0",
                 "--unix-socket",
                 socket,
                 &format!("http://localhost{route}"),
@@ -227,29 +245,7 @@ impl DockerService {
             return Err(Failure::Busy);
         }
         self.cancelled.store(false, Ordering::SeqCst);
-        let result = (|| {
-            let home = std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .ok_or(Failure::Unavailable)?;
-            let cli = [
-                "/usr/local/bin/docker",
-                "/opt/homebrew/bin/docker",
-                "/Applications/Docker.app/Contents/Resources/bin/docker",
-            ]
-            .into_iter()
-            .map(PathBuf::from)
-            .find(|path| path.is_file())
-            .ok_or(Failure::Unavailable)?;
-            collect(
-                &LocalTransport {
-                    service: self,
-                    started: Instant::now(),
-                    cli,
-                    home: home.clone(),
-                },
-                &home,
-            )
-        })();
+        let result = self.with_local(|transport, home| collect(transport, home));
         let measured_at_ms = reclaim_core::scan::now_ms();
         *reclaim_core::scan::lock(&self.observations) = result
             .as_ref()
@@ -260,6 +256,72 @@ impl DockerService {
             measured_at_ms: measured_at_ms.to_string(),
             result,
         })
+    }
+
+    fn with_local<Output>(
+        &self,
+        action: impl FnOnce(&LocalTransport<'_>, &Path) -> Result<Output, Failure>,
+    ) -> Result<Output, Failure> {
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .ok_or(Failure::Unavailable)?;
+        let cli = [
+            "/usr/local/bin/docker",
+            "/opt/homebrew/bin/docker",
+            "/Applications/Docker.app/Contents/Resources/bin/docker",
+        ]
+        .into_iter()
+        .map(PathBuf::from)
+        .find(|path| path.is_file())
+        .ok_or(Failure::Unavailable)?;
+        action(
+            &LocalTransport {
+                service: self,
+                started: Instant::now(),
+                cli,
+                home: home.clone(),
+            },
+            &home,
+        )
+    }
+
+    pub(crate) fn prepare_removal(&self, finding_id: &str) -> Result<RemovalPlan, Failure> {
+        let (_, item) = self.observed_item(finding_id).ok_or(Failure::Malformed)?;
+        if item.kind != reclaim_core::docker::ResourceKind::Image || item.references != Some(0) {
+            return Err(Failure::UnsupportedEngine);
+        }
+        if self.busy.swap(true, Ordering::SeqCst) {
+            return Err(Failure::Busy);
+        }
+        self.cancelled.store(false, Ordering::SeqCst);
+        let result = self.with_local(|transport, home| {
+            let mut plan = removal_snapshot(transport, home, &item.identity)?;
+            plan.bind_socket()?;
+            Ok(plan)
+        });
+        self.busy.store(false, Ordering::SeqCst);
+        result
+    }
+
+    pub(crate) fn remove_image(
+        &self,
+        expected: &RemovalPlan,
+    ) -> (reclaim_core::cleanup::Outcome, String) {
+        use reclaim_core::cleanup::Outcome;
+        if self.busy.swap(true, Ordering::SeqCst) {
+            return (
+                Outcome::Skipped,
+                "Docker busy. No removal dispatched.".into(),
+            );
+        }
+        self.cancelled.store(false, Ordering::SeqCst);
+        let result =
+            self.with_local(|transport, home| Ok(remove_checked(transport, home, expected)));
+        self.busy.store(false, Ordering::SeqCst);
+        result.unwrap_or((
+            Outcome::Changed,
+            "Local Docker discovery unavailable. No removal dispatched.".into(),
+        ))
     }
 
     pub(crate) fn observed_item(
@@ -301,6 +363,9 @@ pub fn docker_cancel<Runtime: tauri::Runtime>(
     service.cancelled.store(true, Ordering::SeqCst);
     Ok(())
 }
+
+pub(crate) mod removal;
+use removal::{removal_snapshot, remove_checked, RemovalPlan};
 
 #[cfg(test)]
 mod tests;

@@ -6,7 +6,7 @@ fn main() {
     tauri::Builder::default()
         .manage(std::sync::Arc::new(scan::ScanService::default()))
         .manage(preferences::PreferencesService::default())
-        .manage(cleanup::CleanupService::default())
+        .manage(std::sync::Arc::new(cleanup::CleanupService::default()))
         .manage(std::sync::Arc::new(docker::DockerService::default()))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -26,6 +26,9 @@ fn main() {
             docker::docker_inventory,
             docker::docker_cancel,
             cleanup::cleanup_review,
+            cleanup::cleanup_execute,
+            cleanup::cleanup_status,
+            cleanup::cleanup_cancel,
             cleanup::cleanup_history,
             cleanup::cleanup_clear_history
         ])

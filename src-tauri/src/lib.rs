@@ -1,4 +1,4 @@
-//! Native read-only scan producer. No frontend filesystem or shell capability.
+//! Native read-only scans and explicitly confirmed cleanup. No generic frontend filesystem or shell capability.
 
 pub mod scan;
 

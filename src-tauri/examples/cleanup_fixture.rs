@@ -49,17 +49,41 @@ async fn scan_pick_folder(fixture: State<'_, Fixture>) -> BoundaryResult<Option<
 #[tauri::command]
 async fn cleanup_history(
     fixture: State<'_, Fixture>,
-    cleanup: State<'_, CleanupService>,
+    cleanup: State<'_, Arc<CleanupService>>,
+    restart: Option<bool>,
 ) -> BoundaryResult<HistoryResponse> {
+    if restart == Some(true) {
+        return Ok(CleanupService::default().history(&fixture.history_directory));
+    }
     Ok(cleanup.history(&fixture.history_directory))
 }
 
 #[tauri::command]
 async fn cleanup_clear_history(
     fixture: State<'_, Fixture>,
-    cleanup: State<'_, CleanupService>,
+    cleanup: State<'_, Arc<CleanupService>>,
 ) -> BoundaryResult<()> {
     cleanup.clear_history(&fixture.history_directory)
+}
+
+#[tauri::command]
+async fn cleanup_execute(
+    fixture: State<'_, Fixture>,
+    cleanup: State<'_, Arc<CleanupService>>,
+    scanner: State<'_, Arc<ScanService>>,
+    docker: State<'_, Arc<DockerService>>,
+    plan_id: String,
+    confirmed: bool,
+) -> BoundaryResult<cleanup::Execution> {
+    let directory = fixture.history_directory.clone();
+    let cleanup = cleanup.inner().clone();
+    let scanner = scanner.inner().clone();
+    let docker = docker.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        cleanup.execute(&scanner, &docker, &directory, &plan_id, confirmed)
+    })
+    .await
+    .map_err(|_| scan::ErrorCode::Internal)?
 }
 
 fn main() {
@@ -69,11 +93,18 @@ fn main() {
         .unwrap();
     let compact = std::env::args().any(|argument| argument == "--compact");
     let enlarged = std::env::args().any(|argument| argument == "--enlarged");
+    let smoke = std::env::args().any(|argument| argument == "--smoke");
     let selected = temporary.path().join("SYNTHETIC-small");
     let large = temporary.path().join("SYNTHETIC-large");
     std::fs::create_dir_all(selected.join("cache")).unwrap();
     std::fs::create_dir(&large).unwrap();
     std::fs::write(selected.join("synthetic.txt"), b"12345").unwrap();
+    std::fs::write(selected.join(".env"), b"SYNTHETIC-secret-sentinel").unwrap();
+    std::fs::write(
+        temporary.path().join("outside-sentinel"),
+        b"SYNTHETIC-outside",
+    )
+    .unwrap();
     std::fs::create_dir_all(selected.join("開発/node_modules")).unwrap();
     std::fs::create_dir(selected.join("other")).unwrap();
     std::fs::write(
@@ -114,6 +145,7 @@ fn main() {
             id: "SYNTHETIC-interrupted-example".into(),
             started_at_ms: reclaim_core::scan::now_ms(),
             finished_at_ms: None,
+            volume_observations: Vec::new(),
             items: vec![reclaim_core::cleanup::ItemOutcome {
                 label: "SYNTHETIC interrupted fixture — no cleanup performed".into(),
                 method: reclaim_core::cleanup::Method::Trash,
@@ -134,7 +166,7 @@ fn main() {
             history_directory,
         })
         .manage(scanner)
-        .manage(CleanupService::default())
+        .manage(Arc::new(CleanupService::default()))
         .manage(Arc::new(DockerService::default()))
         .manage(PreferencesService::default())
         .plugin(tauri_plugin_dialog::init())
@@ -142,6 +174,9 @@ fn main() {
             cleanup_history,
             cleanup_clear_history,
             cleanup::cleanup_review,
+            cleanup_execute,
+            cleanup::cleanup_status,
+            cleanup::cleanup_cancel,
             scan::recognition_page,
             scan_locations,
             preferences_load,
@@ -159,17 +194,35 @@ fn main() {
     context.config_mut().app.windows.clear();
     context.config_mut().build.dev_url = None;
     let app = builder.build(context).unwrap();
+    let handle = app.handle().clone();
+    let checked_root = selected.clone();
+    let checked_outside = temporary.path().join("outside-sentinel");
     tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::App("index.html".into()))
+        .initialization_script(if smoke { include_str!("cleanup_smoke.js") } else { "" })
         .initialization_script(if enlarged { "document.addEventListener('DOMContentLoaded', () => { document.documentElement.style.fontSize = '200%'; });" } else { "" })
         .initialization_script("window.addEventListener('error', event => { location.href = '/fixture-error?message=' + encodeURIComponent(event.message); });")
-        .on_navigation(|url| {
+        .on_navigation(move |url| {
+            if url.path() == "/cleanup-smoke-pass" {
+                assert!(!checked_root.join("開発/node_modules").exists());
+                assert_eq!(std::fs::read(checked_root.join("synthetic.txt")).unwrap(), b"12345");
+                assert_eq!(std::fs::read(checked_root.join(".env")).unwrap(), b"SYNTHETIC-secret-sentinel");
+                assert_eq!(std::fs::read(&checked_outside).unwrap(), b"SYNTHETIC-outside");
+                println!("SYNTHETIC production React + native IPC + actual macOS Trash + restarted history PASS; source/secret/outside sentinels intact");
+                handle.exit(0);
+                return false;
+            }
+            if url.path() == "/cleanup-smoke-fail" {
+                eprintln!("SYNTHETIC cleanup smoke failure: {}", url.query().unwrap_or_default());
+                handle.exit(1);
+                return false;
+            }
             if url.path() == "/fixture-error" {
                 eprintln!("Synthetic fixture render error: {}", url.query().unwrap_or_default());
                 return false;
             }
             true
         })
-        .title("Reclaim — SYNTHETIC review fixture — no removal")
+        .title("Reclaim — SYNTHETIC disposable cleanup fixture")
         .inner_size(if compact { 900.0 } else { 1440.0 }, if compact { 600.0 } else { 1000.0 })
         .build()
         .unwrap();

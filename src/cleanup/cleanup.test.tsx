@@ -17,10 +17,22 @@ import {
 } from '../scan/fixtures';
 import { ScanApplication } from '../scan/ScanApplication';
 import { parseHistory, parseReview } from './contract';
-import type { CleanupApi, Review, Selection } from './contract';
+import type { CleanupApi, Execution, Review, Selection } from './contract';
 
 const disconnects: Array<() => void> = [];
 beforeEach(() => {
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value: function showModal(this: HTMLDialogElement): void {
+      this.open = true;
+    },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+    configurable: true,
+    value: function close(this: HTMLDialogElement): void {
+      this.open = false;
+    },
+  });
   vi.stubGlobal(
     'matchMedia',
     vi.fn(() => ({
@@ -48,6 +60,8 @@ async function settle(): Promise<void> {
 function report(selections: Selection[]): Review {
   return {
     checkedAtMs: 2000,
+    planId: null,
+    expiresAtMs: null,
     items: selections.map((selection) => ({
       selection,
       target: '/SYNTHETIC/Projects',
@@ -58,11 +72,17 @@ function report(selections: Selection[]): Review {
       unavailableReason:
         'Trash unavailable: expected identity cannot be enforced.',
       changed: false,
+      method: null,
     })),
   };
 }
 function fixtureApi(): CleanupApi {
   return {
+    execute: vi.fn(async () => {
+      throw new Error('No executable fixture plan');
+    }),
+    status: vi.fn(async () => null),
+    cancel: vi.fn(async () => undefined),
     review: vi.fn(async (selections) => report(selections)),
     history: vi.fn(async () => ({
       history: { operations: [] },
@@ -185,4 +205,143 @@ test('malformed and executable-looking transport data cannot become eligibility 
       history: { operations: Array.from({ length: 51 }, () => ({})) },
     }),
   ).toThrow();
+});
+
+test('eligible plan requires separate Cancel-focused exact-target confirmation and shows durable outcomes', async () => {
+  const api = fixtureApi();
+  api.review = vi.fn(async (selections: Selection[]): Promise<Review> => ({
+    ...report(selections),
+    planId: 'native-plan',
+    expiresAtMs: Date.now() + 120_000,
+    items: report(selections).items.map((item) => ({
+      ...item,
+      method: 'trash',
+      unavailableReason:
+        'Move exact SYNTHETIC target to macOS Trash. Recover through macOS Trash.',
+    })),
+  }));
+  api.execute = vi.fn(async (planId: string): Promise<Execution> => ({
+    planId,
+    running: false,
+    persistenceError: false,
+    operation: {
+      id: 'operation',
+      startedAtMs: 2000,
+      finishedAtMs: 3000,
+      volumeObservations: [],
+      items: [
+        {
+          label: '/SYNTHETIC/Projects',
+          method: 'trash',
+          outcome: 'removed',
+          explanation: 'Moved to macOS Trash; physical space not claimed.',
+        },
+      ],
+    },
+  }));
+  await mount(api);
+  fireEvent.click(
+    within(
+      screen.getByRole('region', { name: 'Review scanned locations' }),
+    ).getByRole('button', { name: 'Review cleanup options' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Review & Clean' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Check eligibility' }));
+  await settle();
+  expect(api.execute).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Review confirmation' }));
+  const dialog = screen.getByRole('dialog', {
+    name: 'Confirm exact cleanup targets',
+  });
+  const cancel = within(dialog).getByRole('button', {
+    name: 'Cancel',
+  });
+  expect(document.activeElement).toBe(cancel);
+  expect(within(dialog).getByText('/SYNTHETIC/Projects')).toBeTruthy();
+  fireEvent.click(cancel);
+  expect(api.execute).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Review confirmation' }));
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: 'Confirm selected removal',
+    }),
+  );
+  await settle();
+  expect(api.execute).toHaveBeenCalledExactlyOnceWith('native-plan');
+  expect(screen.getByText('Cleanup outcomes')).toBeTruthy();
+  expect(
+    screen.getByText('Moved to macOS Trash; physical space not claimed.'),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'Review confirmation' }),
+  ).toBeNull();
+});
+
+test('irreversible tool confirmation requires acknowledgement; cancellation only requests pending stop', async () => {
+  const api = fixtureApi();
+  api.review = vi.fn(async (selections: Selection[]): Promise<Review> => ({
+    ...report(selections),
+    planId: 'git-plan',
+    expiresAtMs: Date.now() + 120_000,
+    items: report(selections).items.map((item) => ({
+      ...item,
+      method: 'git_worktree',
+    })),
+  }));
+  let finish:
+    ((value: Awaited<ReturnType<CleanupApi['execute']>>) => void) | undefined;
+  api.execute = vi.fn(
+    () =>
+      new Promise<Execution>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await mount(api);
+  fireEvent.click(
+    within(
+      screen.getByRole('region', { name: 'Review scanned locations' }),
+    ).getByRole('button', { name: 'Review cleanup options' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Review & Clean' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Check eligibility' }));
+  await settle();
+  fireEvent.click(screen.getByRole('button', { name: 'Review confirmation' }));
+  const dialog = screen.getByRole('dialog');
+  const confirm = within(dialog).getByRole('button', {
+    name: 'Confirm selected removal',
+  });
+  expect(confirm.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(within(dialog).getByRole('checkbox'));
+  expect(confirm.hasAttribute('disabled')).toBe(false);
+  fireEvent.keyDown(confirm, { key: 'Enter' });
+  expect(api.execute).not.toHaveBeenCalled();
+  fireEvent.click(confirm);
+  await settle();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel pending items' }));
+  expect(api.cancel).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    finish?.({
+      planId: 'git-plan',
+      running: false,
+      persistenceError: true,
+      operation: {
+        id: 'cancelled',
+        startedAtMs: 2000,
+        finishedAtMs: 3000,
+        volumeObservations: [],
+        items: [
+          {
+            label: '/SYNTHETIC/Projects',
+            method: 'git_worktree',
+            outcome: 'skipped',
+            explanation: 'Cancelled before dispatch. Nothing undone.',
+          },
+        ],
+      },
+    });
+  });
+  expect(screen.getByText(/History persistence failed/)).toBeTruthy();
+  expect(
+    screen.getByText('Cancelled before dispatch. Nothing undone.'),
+  ).toBeTruthy();
 });

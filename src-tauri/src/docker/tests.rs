@@ -17,6 +17,10 @@ impl Transport for Fixture {
     fn get(&self, endpoint: &str, request: Request) -> Result<Vec<u8>, Failure> {
         assert_eq!(endpoint, "unix:///var/run/docker.sock");
         match request {
+            Request::Info
+            | Request::Image(_, _)
+            | Request::Containers(_)
+            | Request::DeleteImage(_, _) => Err(Failure::UnsupportedEngine),
             Request::Version => {
                 self.calls.borrow_mut().push("GET /version".into());
                 Ok(br#"{"Platform":{"Name":"Docker Engine - Community"},"Version":"28.0.0","ApiVersion":"1.48"}"#.to_vec())
@@ -49,19 +53,10 @@ fn cleanup_reviews_only_native_observations_and_never_calls_docker_mutation() {
     let inventory = docker::parse_inventory(&payload).unwrap();
     let finding_id = inventory.items[0].artifact.finding_id.clone();
     *reclaim_core::scan::lock(&service.observations) = Some((1234, inventory.items));
-    let review = crate::cleanup::CleanupService::default()
-        .review(
-            &crate::scan::ScanService::default(),
-            &service,
-            vec![crate::cleanup::Selection::Docker { finding_id }],
-        )
-        .unwrap();
-    assert_eq!(review.items.len(), 1);
-    assert_eq!(review.items[0].target, identity);
-    assert_eq!(review.items[0].measured_at_ms, Some(1234));
-    assert!(review.items[0]
-        .unavailable_reason
-        .starts_with("Docker removal unavailable"));
+    let (observed_at, observed) = service.observed_item(&finding_id).unwrap();
+    assert_eq!(observed.identity, identity);
+    assert_eq!(observed_at, 1234);
+    assert!(service.observed_item("forged").is_none());
     // Review only reads the native cache; no process, HTTP DELETE, or tool transport is used.
     assert!(!service.busy.load(Ordering::SeqCst));
 }

@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "cleanup-review"
-description = "Review native findings without mutation; read or clear private local operation history."
-commands.allow = ["cleanup_review", "cleanup_history", "cleanup_clear_history"]
+description = "Review native findings and explicitly execute single-use scoped cleanup plans; manage private operation history."
+commands.allow = ["cleanup_review", "cleanup_execute", "cleanup_status", "cleanup_cancel", "cleanup_history", "cleanup_clear_history"]

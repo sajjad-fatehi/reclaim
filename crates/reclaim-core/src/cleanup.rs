@@ -1,34 +1,68 @@
 //! Operation records are observations, never executable requests or replay tokens.
-use crate::recognition::{Artifact, ChangeState, Nature};
+use crate::recognition::{Artifact, ChangeState, Confidence, Family, Nature};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 pub const MAX_HISTORY: usize = 50;
 pub const MAX_ITEMS: usize = 100;
 
-pub fn filesystem_unavailability(artifact: Option<&Artifact>) -> &'static str {
-    let Some(artifact) = artifact else {
-        return "Unknown artifact. Source, personal data and arbitrary paths are protected.";
-    };
+pub fn filesystem_method(artifact: Option<&Artifact>) -> Result<Method, &'static str> {
+    let artifact = artifact
+        .ok_or("Unknown artifact. Source, personal data and arbitrary paths are protected.")?;
+    if !artifact.complete || artifact.confidence != Confidence::Verified {
+        return Err("Recognition incomplete or contextual. Rescan before cleanup.");
+    }
     if let Some(worktree) = &artifact.worktree {
         if worktree.main {
-            return "Main repositories are protected. Only linked worktrees could be considered.";
+            return Err("Main repositories are protected.");
         }
         if worktree.locked {
-            return "Worktree is locked. Removal unavailable; no force is permitted.";
+            return Err("Worktree is locked. No force is permitted.");
         }
         if worktree.changes != ChangeState::Clean {
-            return "Worktree has tracked, untracked, ignored or unknown changes. Removal blocked.";
+            return Err(
+                "Worktree has tracked, untracked, ignored or unknown changes. Removal blocked.",
+            );
         }
-        return "Git removal unavailable: concurrent registry and data changes are not protected by a proven mutation boundary.";
+        if worktree.repository_id.is_none() || worktree.metadata_id.is_none() {
+            return Err("Worktree registry or repository is outside verified scope.");
+        }
+        return Ok(Method::GitWorktree);
     }
-    if !artifact.complete {
-        return "Recognition incomplete. Safety and ownership cannot be established.";
+    if !artifact.regenerable {
+        return Err("Protected artifact. Recognition, age and size do not authorize removal.");
     }
-    if !matches!(artifact.nature, Nature::Dependencies | Nature::Build) || !artifact.regenerable {
-        return "Protected or unsupported artifact. Recognition, age and size do not authorize removal.";
+    let supported = artifact.evidence.iter().any(|evidence| {
+        matches!(
+            evidence.method.as_str(),
+            "npm_install_metadata"
+                | "pnpm_install_metadata"
+                | "yarn_install_metadata"
+                | "declared_and_installed_dependency"
+        )
+    });
+    if artifact.family == Family::JavaScript && artifact.nature == Nature::Dependencies && supported
+    {
+        return Ok(Method::Trash);
     }
-    "Trash unavailable: no proven operation binds removal to the reviewed identity and scope under concurrent replacement. No permanent-delete fallback."
+    if artifact.family == Family::Rust
+        && artifact.nature == Nature::Build
+        && artifact
+            .evidence
+            .iter()
+            .any(|evidence| evidence.method == "cargo_rustc_fingerprint")
+    {
+        return Ok(Method::Trash);
+    }
+    Err("This artifact family has no implemented narrowly scoped cleanup method. Inspection only.")
+}
+
+pub fn filesystem_unavailability(artifact: Option<&Artifact>) -> &'static str {
+    match filesystem_method(artifact) {
+        Ok(Method::Trash) => "Eligible for macOS Trash after exact-target confirmation and immediate revalidation.",
+        Ok(_) => "Eligible for non-force Git removal after separate irreversible confirmation and fresh checks.",
+        Err(reason) => reason,
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -61,11 +95,21 @@ pub struct ItemOutcome {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VolumeObservation {
+    pub volume_id: String,
+    pub before_free_bytes: Option<String>,
+    pub after_free_bytes: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Operation {
     pub id: String,
     pub started_at_ms: u64,
     pub finished_at_ms: Option<u64>,
     pub items: Vec<ItemOutcome>,
+    #[serde(default)]
+    pub volume_observations: Vec<VolumeObservation>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -89,6 +133,17 @@ impl History {
         self.operations.len() <= MAX_HISTORY
             && self.operations.iter().all(|operation| {
                 valid_text(&operation.id, 64)
+                    && operation.volume_observations.len() <= 16
+                    && operation.volume_observations.iter().all(|volume| {
+                        valid_text(&volume.volume_id, 128)
+                            && [&volume.before_free_bytes, &volume.after_free_bytes]
+                                .iter()
+                                .all(|value| {
+                                    value.as_ref().is_none_or(|value| {
+                                        value.len() <= 20 && value.parse::<u64>().is_ok()
+                                    })
+                                })
+                    })
                     && identities.insert(&operation.id)
                     && operation.started_at_ms > 0
                     && operation
@@ -141,6 +196,7 @@ mod tests {
             id: format!("fixture-{identity}"),
             started_at_ms: 1,
             finished_at_ms: None,
+            volume_observations: Vec::new(),
             items: vec![ItemOutcome {
                 label: "SYNTHETIC target".into(),
                 method: Method::Trash,

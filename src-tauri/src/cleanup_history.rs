@@ -103,6 +103,7 @@ mod tests {
                 id: "fixture".into(),
                 started_at_ms: 1,
                 finished_at_ms: None,
+                volume_observations: Vec::new(),
                 items: vec![ItemOutcome {
                     label: "SYNTHETIC fixture".into(),
                     method: Method::DockerImage,

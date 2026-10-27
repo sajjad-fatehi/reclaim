@@ -6,9 +6,11 @@ import { useReview } from './useReview';
 export function ReviewButton({
   selection,
   disabled = false,
+  candidate = false,
 }: {
   selection: Selection;
   disabled?: boolean;
+  candidate?: boolean;
 }): ReactElement | null {
   const review = useReview();
   if (!review) return null;
@@ -20,7 +22,11 @@ export function ReviewButton({
       disabled={disabled || selected || review.selections.length >= 100}
       onClick={() => review.add(selection)}
     >
-      {selected ? 'Queued for eligibility review' : 'Review cleanup options'}
+      {selected
+        ? 'Queued for eligibility review'
+        : candidate
+          ? 'Add to review'
+          : 'Review cleanup options'}
     </button>
   );
 }

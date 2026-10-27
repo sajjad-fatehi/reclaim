@@ -66,7 +66,7 @@ function ScanApplicationContent({
         },
       }}
       context={
-        <span>
+        <span className="toolbar">
           {progress
             ? `Generation ${progress.generation} · ${progress.status}${state.stale ? ' · stale' : ''}`
             : 'Scan not started'}

@@ -1134,17 +1134,25 @@ mod tests {
     }
 }
 
+pub(crate) mod cleanup;
 pub mod explore;
 
 #[cfg(test)]
-mod cleanup_review_tests {
+pub(crate) mod cleanup_review_tests {
     use super::*;
     use crate::cleanup::{CleanupService, Selection};
     use crate::docker::DockerService;
     use std::fs;
     use std::os::unix::fs::symlink;
 
-    fn fixture() -> (tempfile::TempDir, Arc<ScanService>, u32) {
+    pub(crate) fn rescan(scanner: &ScanService) -> u32 {
+        let scope = lock(&scanner.authority).scope.as_ref().unwrap().id.clone();
+        let generation = scanner.start(&scope).unwrap().generation;
+        super::tests::terminal(scanner);
+        generation
+    }
+
+    pub(crate) fn fixture() -> (tempfile::TempDir, Arc<ScanService>, u32) {
         let temporary = tempfile::tempdir().unwrap();
         fs::create_dir(temporary.path().join("node_modules")).unwrap();
         fs::write(
@@ -1159,6 +1167,17 @@ mod cleanup_review_tests {
         .unwrap();
         fs::write(temporary.path().join("source.rs"), b"source sentinel").unwrap();
         fs::write(temporary.path().join(".env"), b"secret sentinel").unwrap();
+        fs::create_dir(temporary.path().join("target")).unwrap();
+        fs::write(
+            temporary.path().join("Cargo.toml"),
+            "[package]\nname = \"synthetic\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        fs::write(
+            temporary.path().join("target/.rustc_info.json"),
+            br#"{"rustc_fingerprint":123}"#,
+        )
+        .unwrap();
         let service = Arc::new(ScanService::default());
         let location = service.register_native_location(temporary.path()).unwrap();
         let scope = lock(&service.authority).register(&[location.id]).unwrap();
@@ -1167,7 +1186,7 @@ mod cleanup_review_tests {
         (temporary, service, generation)
     }
 
-    fn select(scanner: &ScanService, generation: u32, name: &str) -> Selection {
+    pub(crate) fn select(scanner: &ScanService, generation: u32, name: &str) -> Selection {
         let finding_id = scanner
             .with_terminal_scan(generation, |data| {
                 data.records
@@ -1205,9 +1224,11 @@ mod cleanup_review_tests {
             )
             .unwrap();
         assert_eq!(report.items.len(), 4);
-        assert!(report.items[0]
-            .unavailable_reason
-            .starts_with("Trash unavailable"));
+        assert_eq!(
+            report.items[0].method,
+            Some(reclaim_core::cleanup::Method::Trash)
+        );
+        assert!(report.plan_id.is_some());
         assert!(report
             .items
             .iter()

@@ -14,9 +14,12 @@ export interface ReviewItem {
   artifact: Artifact | null;
   unavailableReason: string;
   changed: boolean;
+  method: ItemOutcome['method'] | null;
 }
 export interface Review {
   checkedAtMs: number;
+  planId: string | null;
+  expiresAtMs: number | null;
   items: ReviewItem[];
 }
 export interface ItemOutcome {
@@ -30,12 +33,26 @@ export interface Operation {
   startedAtMs: number;
   finishedAtMs: number | null;
   items: ItemOutcome[];
+  volumeObservations: {
+    volumeId: string;
+    beforeFreeBytes: string | null;
+    afterFreeBytes: string | null;
+  }[];
 }
 export interface HistoryResponse {
   history: { operations: Operation[] } | null;
   unavailable: boolean;
 }
+export interface Execution {
+  planId: string;
+  operation: Operation;
+  running: boolean;
+  persistenceError: boolean;
+}
 export interface CleanupApi {
+  execute: (planId: string) => Promise<Execution>;
+  status: () => Promise<Execution | null>;
+  cancel: () => Promise<void>;
   review: (selections: Selection[]) => Promise<Review>;
   history: () => Promise<HistoryResponse>;
   clearHistory: () => Promise<void>;
@@ -105,6 +122,8 @@ export function parseReview(value: unknown): Review {
   const data = object(value);
   return {
     checkedAtMs: integer(data.checkedAtMs),
+    planId: data.planId === null ? null : text(data.planId, 64),
+    expiresAtMs: data.expiresAtMs === null ? null : integer(data.expiresAtMs),
     items: list(
       data.items,
       (entry) => {
@@ -124,6 +143,10 @@ export function parseReview(value: unknown): Review {
             item.artifact === null ? null : parseArtifact(item.artifact),
           unavailableReason: text(item.unavailableReason, 512),
           changed: flag(item.changed),
+          method:
+            item.method === null
+              ? null
+              : choice(item.method, ['trash', 'git_worktree', 'docker_image']),
         };
       },
       100,
@@ -152,6 +175,27 @@ export function parseHistory(value: unknown): HistoryResponse {
               operation.finishedAtMs === null
                 ? null
                 : integer(operation.finishedAtMs),
+            volumeObservations:
+              operation.volumeObservations === undefined
+                ? []
+                : list(
+                    operation.volumeObservations,
+                    (entry) => {
+                      const volume = object(entry);
+                      return {
+                        volumeId: text(volume.volumeId, 128),
+                        beforeFreeBytes:
+                          volume.beforeFreeBytes === null
+                            ? null
+                            : bytes(volume.beforeFreeBytes),
+                        afterFreeBytes:
+                          volume.afterFreeBytes === null
+                            ? null
+                            : bytes(volume.afterFreeBytes),
+                      };
+                    },
+                    16,
+                  ),
             items: list(
               operation.items,
               (entry) => {
@@ -183,7 +227,31 @@ export function parseHistory(value: unknown): HistoryResponse {
     },
   };
 }
+export function parseExecution(value: unknown): Execution {
+  const data = object(value);
+  const history = parseHistory({
+    unavailable: false,
+    history: { operations: [data.operation] },
+  });
+  const operation = history.history?.operations[0];
+  if (!operation) throw new Error('Missing operation');
+  return {
+    planId: text(data.planId, 64),
+    operation,
+    running: flag(data.running),
+    persistenceError: flag(data.persistenceError),
+  };
+}
 export const nativeCleanupApi: CleanupApi = {
+  execute: async (planId) =>
+    parseExecution(
+      await invoke<unknown>('cleanup_execute', { planId, confirmed: true }),
+    ),
+  status: async () => {
+    const result = await invoke<unknown>('cleanup_status');
+    return result === null ? null : parseExecution(result);
+  },
+  cancel: () => invoke('cleanup_cancel'),
   review: async (selections) =>
     parseReview(await invoke<unknown>('cleanup_review', { selections })),
   history: async () => parseHistory(await invoke<unknown>('cleanup_history')),

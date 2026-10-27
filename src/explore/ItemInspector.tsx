@@ -57,6 +57,10 @@ export function ItemInspector(props: ItemInspectorProps): ReactElement {
             measuredAtMs={props.dockerMeasuredAtMs ?? null}
           />
           <ReviewButton
+            candidate={
+              props.dockerItem.kind === 'image' &&
+              props.dockerItem.references === 0
+            }
             selection={{
               source: 'docker',
               findingId: props.dockerItem.artifact.findingId,
@@ -146,6 +150,11 @@ function InspectorContent({
           </p>
           <Toolbar label="Item actions">
             <ReviewButton
+              candidate={
+                details?.recognizedAtId === finding.id &&
+                !!artifact &&
+                (artifact.regenerable || artifact.nature === 'worktree')
+              }
               disabled={stale || !settled}
               selection={{
                 source: 'filesystem',
