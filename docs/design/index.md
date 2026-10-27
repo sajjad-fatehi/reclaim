@@ -10,7 +10,7 @@ Confirmed by the user:
 - Overview, Explore, Development, and Review & Clean as the main sections.
 - English product copy initially.
 - Suggested scan locations are reviewed and edited before the user starts scanning.
-- **Atlas** as the current visual direction: a visualization-led canvas with floating pill navigation, glass panels, warm and violet grounds and expressive, bounded motion. It supersedes the warm plum direction and Space Layers; the shipped tokens are recorded in [DESIGN.md](../../DESIGN.md).
+- **Atlas** as the current visual direction: a visualization-led canvas with floating pill navigation, glass panels, pale and deep sky-blue grounds and expressive, bounded motion. It supersedes the warm plum direction and Space Layers; the shipped tokens are recorded in [DESIGN.md](../../DESIGN.md).
 - Expressive, coherent icons and authored motion are desired parts of the interface, not optional finishing decoration.
 
 The detailed layouts, tokens, copy and keyboard choices below are a proposed implementation specification. They still require rendered validation; they are not a claim of user approval for every detail or of tested accessibility.
@@ -19,7 +19,7 @@ The detailed layouts, tokens, copy and keyboard choices below are a proposed imp
 
 Make unexplained storage inspectable. Let people move from a volume's usage to a path, its owner, the evidence and the consequences of removal without losing their place.
 
-Use the Atlas world: glass panels on a warm cream or deep violet canvas, a color per kind of storage shared by every chart and label, and coordinated bounded motion. A selected chart slice or tile links to its list row and inspector because it explains real data. The earlier [warm reference](warm-reference.md) is superseded and kept only as history.
+Use the Atlas world: glass panels on a pale sky-white or deep navy canvas, a color per kind of storage shared by every chart and label, and coordinated bounded motion. A selected chart slice or tile links to its list row and inspector because it explains real data. The earlier [warm reference](warm-reference.md) is superseded and kept only as history.
 
 Assumed usage scene: someone investigating storage pressure on a laptop in ordinary daytime or evening light. Follow system light/dark appearance and keep both equally legible. Expression applies to both themes; the app should feel welcoming rather than like a cold administrative console.
 

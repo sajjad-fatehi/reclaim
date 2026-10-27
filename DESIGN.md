@@ -2,32 +2,32 @@
 name: Reclaim
 description: Atlas — a visualization-led desktop canvas where space is a shape you can read.
 colors:
-  canvas: '#fbf5ec'
-  surface: '#fffcf7'
-  raised: '#f4ece2'
-  text: '#241a33'
-  secondary: '#5d5270'
-  boundary: '#8c7fa3'
-  accent: '#5b3fd6'
-  accent-text: '#4a2fc0'
+  canvas: '#f3f8fc'
+  surface: '#ffffff'
+  raised: '#e6f0f8'
+  text: '#12202e'
+  secondary: '#475a6c'
+  boundary: '#6c869b'
+  accent: '#0577b8'
+  accent-text: '#075f94'
   on-accent: '#ffffff'
-  selection: '#e6defb'
-  selection-text: '#3a2394'
+  selection: '#d6ecfa'
+  selection-text: '#0b5a8a'
   warning: '#7a4a00'
   warning-surface: '#fff0d0'
   danger: '#a8261c'
   success: '#0c6b36'
-  tile-text: '#1c1626'
-  canvas-dark: '#120e1c'
-  surface-dark: '#221b34'
-  raised-dark: '#2c2342'
-  text-dark: '#f4f0fb'
-  secondary-dark: '#bdb4d1'
-  boundary-dark: '#8f84ab'
-  accent-dark: '#7a5cf0'
-  accent-text-dark: '#c0b0ff'
-  selection-dark: '#3a2d66'
-  selection-text-dark: '#e6dcff'
+  tile-text: '#10202e'
+  canvas-dark: '#0c1722'
+  surface-dark: '#14232f'
+  raised-dark: '#1c2f3e'
+  text-dark: '#eef5fb'
+  secondary-dark: '#a9bccd'
+  boundary-dark: '#7f97ab'
+  accent-dark: '#38b6f5'
+  accent-text-dark: '#7cc8fb'
+  selection-dark: '#1c3a52'
+  selection-text-dark: '#e6f4ff'
   warning-dark: '#f6cd78'
   warning-surface-dark: '#33270e'
   danger-dark: '#ff958b'
@@ -109,14 +109,14 @@ components:
 
 **Creative North Star: "Atlas"**
 
-The window is a canvas, not a chrome frame. A floating pill carries navigation, glass panels sit on a warm or violet-lit ground, and measured space is drawn as shapes: category colors are shared between charts, tiles, legends, chips and dialogs so a color always means the same kind of storage. Motion is expressive but bounded and never carries meaning alone.
+The window is a canvas, not a chrome frame. A floating pill carries navigation, glass panels sit on a pale or deep sky-lit ground, and measured space is drawn as shapes: category colors are shared between charts, tiles, legends, chips and dialogs so a color always means the same kind of storage. Motion is expressive but bounded and never carries meaning alone.
 
 Runtime values live in `src/shell/tokens.css`; this document records them and does not define a second theme. Screens consume semantic roles and never introduce per-screen colors. Honesty rules for charts (outside-scope and unrecognized areas hatched, never drawn as if measured) are part of the system, see [design system](docs/design/design-system.md).
 
 **Key Characteristics:**
 
 - Floating pill navigation and a header with scan-coverage status; no sidebar.
-- Warm cream (light) and deep violet (dark) canvases with soft color glows.
+- Pale sky-white (light) and deep navy-slate (dark) canvases with soft color glows.
 - Glass panels with a hairline edge and backdrop blur; dense tables stay crisp.
 - Separate saturated chart fills and pastel tile fills, tuned independently.
 - Pill controls, large radii, spring-eased arrival of the current tab.
@@ -129,7 +129,7 @@ Frontmatter names follow the runtime roles. `-dark` entries are theme overrides;
 
 - **Accent:** primary action, current tab, focus emphasis, measured scope. `accent-text` is the variant for text and outlines on the canvas; `on-accent` is the foreground on accent fills.
 - **Selection:** selected rows and appearance choices, always paired with `selection-text`.
-- **Canvas / surface / raised:** ground, opaque panel and control hover. The canvas carries two radial glows (`--canvas-glow`): peach and lilac in light, violet and plum in dark.
+- **Canvas / surface / raised:** ground, opaque panel and control hover. The canvas carries two radial glows (`--canvas-glow`): pale sky blues in light, deep sky blues in dark.
 - **Glass / glass-strong / edge:** translucent panel, near-opaque overlay and the hairline around both. Glass is for framing; it never sits behind dense cells.
 - **Text / secondary:** reading hierarchy. **Boundary** is the 3:1 outline for controls that must be discoverable; **divider** is decorative.
 - **Warning / danger / success:** text roles checked on surface. `warning-surface` and `danger-surface` are the fills for caution chips and destructive buttons.
@@ -138,7 +138,7 @@ Frontmatter names follow the runtime roles. `-dark` entries are theme overrides;
 
 Seven category hues (dependencies, build, docker, stores, editor, worktrees, logs) plus an unknown ground, each in two sets:
 
-- **Tile fills** (`--tile-*`) are pastel in light and bright in dark. Text on them is always `--tile-text` (`#1c1626`) and reaches 4.5:1.
+- **Tile fills** (`--tile-*`) are pastel in light and bright in dark. Text on them is always `--tile-text` (`#10202e`) and reaches 4.5:1.
 - **Chart fills** (`--chart-*`) are saturated in light so graphic marks keep at least 3:1 against the canvas; in dark they equal the tile fills.
 
 Unknown (`--tile-unknown`, `--chart-unknown`) is rendered hatched, never as a plain slice. Every color sits beside a text label.
@@ -212,15 +212,15 @@ Use [the original alpha WebP](assets/illustrations/reclaim-folder.webp), with [p
 
 ## Motion
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--duration-feedback` | 120ms | hover and press color |
-| `--duration-selection` | 200ms | selection, view entrance, spring press |
-| `--duration-panel` | 320ms | inspector, dialog |
-| `--duration-chart` | 800ms | chart sweep (screens) |
-| `--duration-artwork` | 300ms | illustration settle |
-| `--ease-out` | `cubic-bezier(0.2, 0.9, 0.25, 1)` | default |
-| `--ease-spring` | `cubic-bezier(0.3, 1.6, 0.5, 1)` | tab arrival, button press |
+| Token                  | Value                             | Use                                    |
+| ---------------------- | --------------------------------- | -------------------------------------- |
+| `--duration-feedback`  | 120ms                             | hover and press color                  |
+| `--duration-selection` | 200ms                             | selection, view entrance, spring press |
+| `--duration-panel`     | 320ms                             | inspector, dialog                      |
+| `--duration-chart`     | 800ms                             | chart sweep (screens)                  |
+| `--duration-artwork`   | 300ms                             | illustration settle                    |
+| `--ease-out`           | `cubic-bezier(0.2, 0.9, 0.25, 1)` | default                                |
+| `--ease-spring`        | `cubic-bezier(0.3, 1.6, 0.5, 1)`  | tab arrival, button press              |
 
 View entrance moves 6px from opacity 0.6; edge panels move 20px. The spring easing is reserved for navigation and buttons, never for data. `prefers-reduced-motion: reduce` removes every transition and animation and the hover/press transform; end states render immediately and state, focus and text remain.
 

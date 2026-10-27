@@ -170,14 +170,7 @@ input[type='checkbox'] {
   width: 26px;
   height: 26px;
   border-radius: 9px;
-  background: conic-gradient(
-    from 200deg,
-    var(--chart-dependencies),
-    var(--chart-stores),
-    var(--chart-worktrees),
-    var(--chart-build),
-    var(--chart-dependencies)
-  );
+  background: linear-gradient(135deg, var(--accent-glow), var(--accent));
 }
 .navigation-pill {
   display: flex;
