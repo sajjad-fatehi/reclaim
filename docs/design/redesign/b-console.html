@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reclaim redesign · B · Console (dense pro tool)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light;--sans:Inter,-apple-system,system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+--bg:#f4f5f8;--panel:#fff;--raised:#f0f1f5;--line:#e0e3ea;--text:#14161b;--text2:#555b6a;--accent:#3f51d8;--accent-text:#3446c9;--on-accent:#fff;--accent-soft:#e8ebfd;
+--warn:#8a5200;--warn-bg:#fff2d9;--bad:#b3261e;--ok:#146c43;--hatch:#9097a6;
+--c-deps:#4f6bff;--c-build:#e08a00;--c-docker:#0f9fb5;--c-stores:#9b5de5;--c-editor:#1f9d55;--c-worktrees:#e0366b;--c-logs:#7b8294;--shadow:0 10px 40px rgba(20,22,30,.18)}
+[data-theme=dark]{color-scheme:dark;--bg:#0a0b0e;--panel:#101217;--raised:#171a21;--line:#252936;--text:#e8eaf0;--text2:#9ba2b3;--accent:#5468f0;--accent-text:#9db0ff;--on-accent:#fff;--accent-soft:#1b2142;
+--warn:#f3c76b;--warn-bg:#2b2310;--bad:#ff8c84;--ok:#6fd49b;--hatch:#7c8396;
+--c-deps:#7b93ff;--c-build:#ffb340;--c-docker:#3cc7dd;--c-stores:#c08cff;--c-editor:#4fd187;--c-worktrees:#ff6b9a;--c-logs:#8e95a8;--shadow:0 20px 60px rgba(0,0,0,.7)}
+*{box-sizing:border-box;margin:0}
+body{font:12.5px/1.45 var(--sans);background:var(--bg);color:var(--text);min-height:100vh;display:grid;place-items:center;padding:20px;-webkit-font-smoothing:antialiased}
+.ic{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.35;stroke-linecap:square;stroke-linejoin:miter;flex:none}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:1px}
+.mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.app{width:1180px;height:760px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);display:grid;grid-template:44px 1fr / 56px 1fr;overflow:hidden;position:relative}
+.top{grid-column:1/3;display:flex;align-items:center;gap:12px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+.lights{display:flex;gap:7px;margin-right:6px}.lights i{width:11px;height:11px;border-radius:50%;background:var(--line)}
+.mark{font-weight:600;letter-spacing:.02em;display:flex;gap:6px;align-items:center}.mark b{width:18px;height:18px;border-radius:5px;background:var(--accent);display:grid;place-items:center;color:#fff;font:600 11px var(--mono)}
+.cmd{flex:0 1 420px;margin:0 auto;display:flex;align-items:center;gap:8px;height:28px;border:1px solid var(--line);background:var(--raised);border-radius:7px;padding:0 10px;color:var(--text2);cursor:text;text-align:left}
+.cmd:hover{border-color:var(--text2)}.cmd kbd{margin-left:auto}
+kbd{font:500 10.5px var(--mono);border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:0 5px;color:var(--text2);line-height:17px}
+.scanstat{display:flex;align-items:center;gap:8px;font:11.5px var(--mono);color:var(--text2)}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 0 var(--warn);animation:ping 2.4s infinite}
+.pill{display:inline-flex;align-items:center;gap:5px;font:500 11px var(--mono);padding:1px 7px;border-radius:5px;border:1px solid var(--line);background:var(--raised);white-space:nowrap}
+.pill.warn{color:var(--warn);background:var(--warn-bg);border-color:transparent}.pill.ok{color:var(--ok)}.pill.bad{color:var(--bad)}
+.rail{border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0;background:var(--panel)}
+.rb{position:relative;width:38px;height:38px;border-radius:8px;border:0;background:none;display:grid;place-items:center;cursor:pointer;color:var(--text2)}
+.rb .ic{width:18px;height:18px}.rb:hover{background:var(--raised);color:var(--text)}
+.rb[aria-current=page]{background:var(--accent-soft);color:var(--accent-text)}.rb[aria-current=page]::before{content:"";position:absolute;left:-9px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--accent-text);animation:slide .18s ease-out}
+.rb .bdg{position:absolute;top:2px;right:0;font:600 9.5px var(--mono);background:var(--accent);color:#fff;border-radius:7px;padding:0 4px}
+.rb .tip{position:absolute;left:46px;background:var(--text);color:var(--bg);padding:3px 8px;border-radius:5px;font-size:11px;white-space:nowrap;opacity:0;pointer-events:none;transform:translateX(-4px);transition:.12s;z-index:5}
+.rb:hover .tip,.rb:focus-visible .tip{opacity:1;transform:none}.tip kbd{margin-left:6px;background:transparent;border-color:currentColor;color:inherit;opacity:.7}
+.rail .sp{flex:1}
+.page{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
+.view[hidden]{display:none}.view{display:flex;flex-direction:column;flex:1;min-height:0;animation:fadein .14s ease-out}
+.head{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.head h1{font-size:13px;font-weight:600}.head .crumb{color:var(--text2);font-family:var(--mono);font-size:11.5px}.head .sp{flex:1}
+.btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:6px;border:1px solid var(--line);background:var(--raised);cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--text2)}.btn:active{transform:translateY(1px)}
+.btn.pri{background:var(--accent);border-color:transparent;color:var(--on-accent)}.btn.pri:hover{filter:brightness(1.1)}
+.btn.dng{background:#c4382b;border-color:transparent;color:#fff}.btn:disabled{opacity:.4;cursor:not-allowed}
+.body{overflow:auto;flex:1;min-height:0}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);background:var(--panel);border-bottom:1px solid var(--line)}
+.kpi{padding:12px 16px;border-right:1px solid var(--line)}.kpi:last-child{border:0}
+.kpi small{color:var(--text2);display:block;font-size:11px;text-transform:uppercase;letter-spacing:.07em}
+.kpi b{font:500 22px/1.3 var(--mono);letter-spacing:-.02em}.kpi span{color:var(--text2);font-size:11.5px;display:block}
+.strip{height:10px;display:flex;background:var(--raised);border-bottom:1px solid var(--line)}
+.strip i{display:block;background:var(--c);width:var(--w);transition:width .6s cubic-bezier(.2,.8,.2,1),opacity .15s;border-right:1px solid var(--panel)}
+.strip i.out{background:repeating-linear-gradient(135deg,var(--hatch) 0 1.5px,transparent 1.5px 5px)}
+.strip.dim i:not(.on){opacity:.25}
+.grid{display:grid;grid-template-columns:1fr 330px;gap:0}
+.col{border-right:1px solid var(--line);min-width:0}
+.pt{display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);font-weight:600}
+.pt .sp{flex:1}
+table{width:100%;border-collapse:collapse}
+th{font-weight:500;font-size:11px;text-align:left;color:var(--text2);padding:6px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);white-space:nowrap}
+td{padding:0 10px;height:30px;border-bottom:1px solid var(--line);white-space:nowrap}
+tbody tr{background:var(--panel);cursor:pointer;transition:background .08s}tbody tr:hover{background:var(--raised)}
+tbody tr:focus-visible{outline-offset:-2px}
+tbody tr[aria-selected=true]{background:var(--accent-soft);box-shadow:inset 2px 0 0 var(--accent-text)}
+td.r,th.r{text-align:right}.tick{display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--c);margin-right:9px;vertical-align:-3px}
+.share{display:inline-flex;align-items:center;gap:8px;width:150px}.share i{display:block;height:5px;border-radius:1px;background:var(--c);width:var(--w);transform-origin:left;animation:grow .5s ease-out backwards}.share span{width:120px}.share em{font:11px var(--mono);font-style:normal;color:var(--text2);width:32px;text-align:right}
+.q{padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel);display:grid;grid-template-columns:18px 1fr;gap:8px}
+.q b{font-weight:500}.q p{color:var(--text2);font-size:11.5px}.q .ic{margin-top:2px}.q button{margin-top:6px}
+.foot{display:flex;gap:16px;align-items:center;padding:6px 16px;border-top:1px solid var(--line);background:var(--panel);color:var(--text2);font-size:11px}.foot kbd{margin-right:4px}.foot .sp{flex:1}
+.split{display:grid;grid-template-rows:minmax(0,1fr) 250px;flex:1;min-height:0}
+.dock{border-top:1px solid var(--line);background:var(--panel);display:grid;grid-template-columns:1.25fr 1fr 1.1fr;min-height:0;overflow:hidden}
+.dock>div{padding:12px 16px;border-right:1px solid var(--line);overflow:auto}.dock>div:last-child{border:0}
+.dock.swap>div{animation:fadein .16s ease-out}
+.dock h3{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);font-weight:600;margin-bottom:8px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px}.kv dt{color:var(--text2)}.kv dd{font-family:var(--mono);font-size:11.5px;text-align:right;overflow-wrap:anywhere}
+.pathbox{font:11.5px/1.5 var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;overflow-wrap:anywhere;user-select:all}
+.tw{display:flex;align-items:center;gap:6px}.tw .ic{color:var(--text2);width:13px;height:13px}
+.drawer{position:absolute;top:44px;right:0;bottom:0;width:440px;background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);display:flex;flex-direction:column;transform:translateX(0);transition:transform .22s cubic-bezier(.2,.8,.2,1);z-index:10}
+.drawer[hidden]{display:flex;transform:translateX(105%);visibility:hidden;transition:transform .22s,visibility 0s .22s}
+.drawer header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}.drawer header h2{font-size:13px}.drawer header .sp{flex:1}
+.ditem{padding:10px 16px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:1fr auto;gap:2px 10px}.ditem small{color:var(--text2)}.ditem .x{grid-row:1/3;grid-column:2;align-self:center}
+.dfoot{margin-top:auto;border-top:1px solid var(--line);padding:14px 16px;background:var(--raised)}
+.dfoot .conf{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:12px;margin-bottom:10px}.dfoot .row{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.dfoot label{display:flex;gap:8px;margin-top:10px;padding:8px 10px;background:var(--warn-bg);color:var(--text);border-radius:6px}.dfoot input{accent-color:var(--accent);margin-top:2px}
+.sheetbg{position:absolute;inset:44px 0 0 56px;background:rgba(0,0,0,.38);z-index:9;animation:fadein .15s}.sheetbg[hidden]{display:none}
+.pal{position:absolute;left:50%;top:70px;transform:translateX(-50%);width:560px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);z-index:20;overflow:hidden;animation:pop .14s ease-out}.pal[hidden]{display:none}
+.pal input{width:100%;border:0;background:none;padding:14px 16px;border-bottom:1px solid var(--line);outline:0;font-size:14px}
+.pal ul{list-style:none;padding:6px;max-height:300px;overflow:auto}.pal li{display:flex;gap:10px;align-items:center;padding:7px 10px;border-radius:6px;cursor:pointer}.pal li[aria-selected=true]{background:var(--accent-soft)}.pal li small{margin-left:auto;color:var(--text2);font:11px var(--mono)}.pal h4{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);padding:8px 10px 2px}
+.themebtn{position:fixed;left:14px;bottom:14px}
+@keyframes grow{from{transform:scaleX(0)}}@keyframes fadein{from{opacity:0}}@keyframes slide{from{opacity:0;transform:scaleY(.2)}}@keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.97)}}
+@keyframes ping{70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<symbol id="i-disk" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M3.5 6l1.5 1.5L7 5M3.5 12l1.5 1.5L7 11M3.5 18l1.5 1.5L7 17"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+<symbol id="i-chevr" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+<symbol id="i-chevd" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
+<symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3l9 4.5v9L12 21l-9-4.5v-9z"/><path d="M3 7.5l9 4.5 9-4.5M12 12v9"/></symbol>
+<symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10M18 11c0 4-6 3-12 6"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+<symbol id="i-scan" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 12l6-6"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+<symbol id="i-pkg" viewBox="0 0 24 24"><path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M8 6l8 4v4M12 12v8M4 8l8 4"/></symbol>
+</defs></svg>
+
+<div class="app">
+  <header class="top">
+    <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="mark"><b>R</b>Reclaim</div>
+    <button class="cmd" id="cmdopen"><svg class="ic"><use href="#i-search"/></svg>Search paths, projects, actions<kbd>⌘K</kbd></button>
+    <div class="scanstat" role="status"><span class="pulse" aria-hidden="true"></span><span>PARTIAL · 3/5 locations · 09:41</span></div>
+  </header>
+  <nav class="rail" aria-label="Sections">
+    <button class="rb" data-view="overview" aria-label="Overview"><svg class="ic"><use href="#i-disk"/></svg><span class="tip">Overview<kbd>G O</kbd></span></button>
+    <button class="rb" data-view="explore" aria-label="Explore"><svg class="ic"><use href="#i-folder"/></svg><span class="tip">Explore<kbd>G E</kbd></span></button>
+    <button class="rb" data-view="development" aria-label="Development"><svg class="ic"><use href="#i-code"/></svg><span class="tip">Development<kbd>G D</kbd></span></button>
+    <button class="rb" id="rvbtn" aria-label="Review and Clean, 3 selected"><svg class="ic"><use href="#i-list"/></svg><span class="bdg">3</span><span class="tip">Review &amp; Clean<kbd>G R</kbd></span></button>
+    <span class="sp"></span>
+    <button class="rb" data-view="settings" aria-label="Settings"><svg class="ic"><use href="#i-gear"/></svg><span class="tip">Settings<kbd>,</kbd></span></button>
+  </nav>
+  <main class="page">
+    <section class="view" id="v-overview" hidden>
+      <div class="head"><h1>Overview</h1><span class="crumb">Macintosh HD · APFS · measured today 09:41</span><span class="sp"></span><span class="pill warn"><svg class="ic"><use href="#i-lock"/></svg>2 locations need access</span><button class="btn pri"><svg class="ic"><use href="#i-scan"/></svg>Rescan</button></div>
+      <div class="body">
+        <div class="kpis">
+          <div class="kpi"><small>Used (volume)</small><b class="cu" data-v="812.3">812.3 GB</b><span>of 994.7 GB</span></div>
+          <div class="kpi"><small>Measured in scope</small><b class="cu" data-v="214.6">214.6 GB</b><span>allocated · 3 locations</span></div>
+          <div class="kpi"><small>Outside scope</small><b class="cu" data-v="597.7">597.7 GB</b><span>not measured · not an artifact</span></div>
+          <div class="kpi"><small>Free</small><b class="cu" data-v="182.4">182.4 GB</b><span>on volume</span></div>
+        </div>
+        <div class="strip" id="strip" role="img" aria-label="Volume: measured categories 214.6 GB, outside scope 597.7 GB hatched, free 182.4 GB empty"></div>
+        <div class="grid">
+          <div class="col">
+            <div class="pt">Categories <span class="pill">share of 214.6 GB scope</span><span class="sp"></span><kbd>J</kbd><kbd>K</kbd> move <kbd>↵</kbd> open</div>
+            <table id="cats"><thead><tr><th>Category</th><th>Items</th><th class="r">Allocated</th><th>Share of scope</th></tr></thead><tbody></tbody></table>
+            <div class="pt" style="margin-top:0">Coverage</div>
+            <table id="locs"><tbody></tbody></table>
+          </div>
+          <div>
+            <div class="pt">Needs attention</div>
+            <div class="q"><svg class="ic" style="color:var(--warn)"><use href="#i-lock"/></svg><div><b>Access required · 2 locations</b><p>~/Library/Containers, /Library/Developer. Unmeasured space is not in any category.</p><button class="btn">Review access</button></div></div>
+            <div class="q"><svg class="ic" style="color:var(--warn)"><use href="#i-branch"/></svg><div><b>2 worktrees with uncommitted changes</b><p>feat-billing + 1 other. 2.1 GB. Cleanup restricted.</p><button class="btn" data-view="explore">Inspect</button></div></div>
+            <div class="q"><svg class="ic" style="color:var(--warn)"><use href="#i-box"/></svg><div><b>Docker volumes · 8.7 GB</b><p>May hold persistent data. Inspection only.</p><button class="btn" data-view="explore">Inspect</button></div></div>
+            <div class="q"><svg class="ic" style="color:var(--accent-text)"><use href="#i-pkg"/></svg><div><b>node_modules · 48.9 GB / 14 projects</b><p>Evidence: package.json + lockfile. Reinstall time not measured.</p><button class="btn" data-view="explore">Inspect</button></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="foot"><span><kbd>G</kbd><kbd>E</kbd>Explore</span><span><kbd>⌘K</kbd>Command</span><span><kbd>R</kbd>Review</span><span class="sp"></span><span>Shares are of measured scope, not the whole volume.</span></div>
+    </section>
+
+    <section class="view" id="v-explore" hidden>
+      <div class="head"><h1>Explore</h1><span class="crumb" id="crumb"></span><span class="sp"></span><span class="pill">9 entries · hidden shown</span><span class="pill warn">1 not measured</span></div>
+      <div class="split">
+        <div class="body"><table id="tbl"><thead><tr><th>Name</th><th>Owner</th><th>Confidence</th><th>Status</th><th class="r">Allocated ▾</th><th class="r">Logical</th></tr></thead><tbody></tbody></table></div>
+        <div class="dock" id="dock" aria-live="polite" aria-label="Inspector"></div>
+      </div>
+      <div class="foot"><span><kbd>↑</kbd><kbd>↓</kbd>Select</span><span><kbd>→</kbd>Open folder</span><span><kbd>A</kbd>Add to review</span><span><kbd>⌘C</kbd>Copy path</span><span class="sp"></span><span>Selecting never grants deletion permission.</span></div>
+    </section>
+    <section class="view" id="v-development" hidden><div class="head"><h1>Development</h1><span class="crumb">Projects · Tools</span></div></section>
+    <section class="view" id="v-settings" hidden><div class="head"><h1>Settings</h1></div></section>
+  </main>
+
+  <div class="sheetbg" id="bg" hidden></div>
+  <aside class="drawer" id="drawer" hidden aria-labelledby="dt">
+    <header><h2 id="dt">Review &amp; Clean</h2><span class="pill">3 selected</span><span class="sp"></span><button class="btn" id="dclose" aria-label="Close review"><svg class="ic"><use href="#i-x"/></svg></button></header>
+    <div id="ditems"></div>
+    <div class="ditem" style="background:var(--warn-bg)"><b>.worktrees/feat-billing</b><span class="pill warn">Not eligible</span><small>Uncommitted changes. Inspect only.</small></div>
+    <div class="dfoot" id="dfoot"></div>
+  </aside>
+  <div class="pal" id="pal" hidden role="dialog" aria-label="Command palette"><input id="palq" placeholder="Type a path, project or action…" aria-label="Command search"><ul id="pall"></ul></div>
+</div>
+<button class="btn themebtn" id="theme-toggle" onclick="cycleTheme()"><svg class="ic"><use href="#i-sun"/></svg>Theme</button>
+<script>
+const RECLAIM = {
+  volume: { name: 'Macintosh HD', fs: 'APFS', total: 994.7, used: 812.3, free: 182.4, measuredAt: 'Today, 09:41' },
+  scope: { measured: 214.6, outside: 597.7 },
+  locations: [
+    { path: '~/Projects', state: 'Measured', gb: 118.4 },
+    { path: '~/Library/Caches', state: 'Measured', gb: 41.7 },
+    { path: '~/.cargo · ~/.npm · ~/.nvm', state: 'Measured', gb: 54.5 },
+    { path: '~/Library/Containers', state: 'Access required', gb: null },
+    { path: '/Library/Developer', state: 'Access required', gb: null }
+  ],
+  categories: [
+    { id: 'deps', name: 'Dependencies', gb: 61.2, items: '14 projects', icon: 'pkg', kids: [['node_modules', 48.9], ['.venv (Python)', 8.4], ['Pods', 3.9]] },
+    { id: 'build', name: 'Build outputs', gb: 38.4, items: '22 folders', icon: 'layers', kids: [['target (Rust)', 24.3], ['.next · dist', 9.6], ['DerivedData', 4.5]] },
+    { id: 'docker', name: 'Docker', gb: 29.6, items: 'Engine inventory', icon: 'box', kids: [['Images', 17.2], ['Volumes · persistent', 8.7], ['Build cache', 3.7]] },
+    { id: 'stores', name: 'Shared stores', gb: 22.1, items: '3 stores', icon: 'disk', kids: [['~/.cargo registry', 9.8], ['~/.npm', 8.4], ['Homebrew cache', 3.9]] },
+    { id: 'editor', name: 'Editor & coding tools', gb: 14.8, items: '4 tools', icon: 'code', kids: [['VS Code', 5.2], ['Cursor', 4.6], ['Claude · Codex', 5.0]] },
+    { id: 'worktrees', name: 'Worktrees', gb: 9.3, items: '5 worktrees · 2 with changes', icon: 'branch', kids: [['feat-billing', 2.1], ['Other worktrees', 7.2]] },
+    { id: 'logs', name: 'Logs', gb: 3.1, items: '31 files', icon: 'file', kids: [['Project logs', 3.1]] },
+    { id: 'unknown', name: 'Unrecognized', gb: 36.1, items: 'Ownership unknown', icon: 'folder', kids: [['Not recognized', 36.1]] }
+  ],
+  suggestions: [
+    { title: 'node_modules in 14 projects', body: '48.9 GB measured. Dependencies can be reinstalled; install time is not measured.', cta: 'Inspect', tone: 'info' },
+    { title: 'Docker volumes may hold data', body: '8.7 GB measured. Persistent container data. Inspection only.', cta: 'Inspect', tone: 'caution' },
+    { title: 'Worktree with uncommitted changes', body: 'feat-billing, 2.1 GB. Changes would be lost. Cleanup restricted.', cta: 'Inspect', tone: 'caution' }
+  ],
+  explorePath: ['Macintosh HD', 'Users', 'sajjad', 'Projects', 'atlas-web'],
+  rows: [
+    { id: 'target', name: 'target', kind: 'dir', owner: 'Rust build output', conf: 'Verified', gb: 9.6, logical: 11.9, status: 'Complete', cat: 'build' },
+    { id: 'node', name: 'node_modules', kind: 'dir', owner: 'JavaScript dependencies', conf: 'Verified', gb: 4.8, logical: 5.3, status: 'Complete', cat: 'deps' },
+    { id: 'wt', name: '.worktrees/feat-billing', kind: 'dir', owner: 'Git worktree', conf: 'High', gb: 2.1, logical: 2.2, status: 'Complete', cat: 'worktrees', restricted: true },
+    { id: 'next', name: '.next', kind: 'dir', owner: 'Next.js build output', conf: 'High', gb: 1.2, logical: 1.3, status: 'Complete', cat: 'build' },
+    { id: 'vendor', name: 'vendor-cache', kind: 'dir', owner: 'Ownership unknown', conf: 'None', gb: 0.52, logical: 0.55, status: 'Complete', cat: 'unknown' },
+    { id: 'git', name: '.git', kind: 'dir', owner: 'Git metadata', conf: 'Verified', gb: 0.64, logical: 0.66, status: 'Complete', cat: 'source', protectedItem: true },
+    { id: 'logs', name: 'logs', kind: 'dir', owner: 'Project logs', conf: 'High', gb: 0.31, logical: 0.31, status: 'Complete', cat: 'logs' },
+    { id: 'src', name: 'src', kind: 'dir', owner: 'Source', conf: 'Verified', gb: 0.012, logical: 0.011, status: 'Complete', cat: 'source', protectedItem: true },
+    { id: 'env', name: '.env.local', kind: 'file', owner: 'Configuration', conf: 'Verified', gb: null, logical: null, status: 'Not measured · permission denied', cat: 'source', protectedItem: true }
+  ],
+  review: [
+    { id: 'target', name: 'atlas-web/target', gb: 9.6, method: 'Move to Trash', reversible: true, note: 'Recoverable from Trash until emptied.' },
+    { id: 'node', name: 'atlas-web/node_modules', gb: 4.8, method: 'Move to Trash', reversible: true, note: 'Recoverable from Trash until emptied.' },
+    { id: 'dockercache', name: 'Docker build cache', gb: 3.7, method: 'docker builder prune (no --force)', reversible: false, note: 'Cannot be undone. Images and volumes are not touched.' }
+  ],
+  blocked: { name: '.worktrees/feat-billing', reason: 'Uncommitted changes. Not eligible for cleanup.' }
+};
+const fmt = (gb) => gb == null ? '—' : gb >= 1 ? gb.toFixed(1) + ' GB' : Math.round(gb * 1000) + ' MB';
+const q1 = (s, r = document) => r.querySelector(s);
+const qa = (s, r = document) => [...r.querySelectorAll(s)];
+const icon = (n, c = '') => `<svg class="ic ${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+(function boot() {
+  const q = new URLSearchParams(location.search);
+  const root = document.documentElement;
+  const media = matchMedia('(prefers-color-scheme: dark)');
+  let mode = q.get('theme') || 'system';
+  window.applyTheme = (m) => { mode = m; root.dataset.theme = m === 'system' ? (media.matches ? 'dark' : 'light') : m; root.dataset.mode = m; const b = q1('#theme-toggle'); if (b) b.setAttribute('aria-label', 'Theme: ' + m + '. Activate to change.'), b.dataset.mode = m; };
+  media.addEventListener('change', () => mode === 'system' && applyTheme('system'));
+  window.cycleTheme = () => applyTheme({ system: 'light', light: 'dark', dark: 'system' }[mode]);
+  window.initialView = () => (location.hash.slice(1) || q.get('view') || 'overview');
+  applyTheme(mode);
+})();
+
+const D = RECLAIM, V = D.volume;
+const col = (id) => id === 'unknown' || id === 'source' ? 'var(--text2)' : `var(--c-${id})`;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// strip
+const strip = q1('#strip'); const w = (g) => (g / V.total * 100).toFixed(2) + '%';
+strip.innerHTML = D.categories.map(c => `<i data-cat="${c.id}" style="--c:${col(c.id)};--w:${w(c.gb)};${c.id === 'unknown' ? 'opacity:.6' : ''}"></i>`).join('') + `<i class="out" style="--w:${w(D.scope.outside)}"></i>`;
+// categories
+q1('#cats tbody').innerHTML = D.categories.map(c => `<tr tabindex="0" data-cat="${c.id}" data-view="explore"><td><span class="tick" style="--c:${col(c.id)}"></span>${c.name}</td><td style="color:var(--text2)">${c.items}</td><td class="r num">${fmt(c.gb)}</td><td><span class="share"><span><i style="--c:${col(c.id)};--w:${(c.gb / 61.2 * 100).toFixed(0)}%;display:block"></i></span><em>${(c.gb / D.scope.measured * 100).toFixed(0)}%</em></span></td></tr>`).join('');
+qa('#cats tbody tr').forEach(r => { const on = () => { strip.classList.add('dim'); qa('#strip i').forEach(s => s.classList.toggle('on', s.dataset.cat === r.dataset.cat)); }, off = () => strip.classList.remove('dim'); ['mouseenter', 'focus'].forEach(e => r.addEventListener(e, on)); ['mouseleave', 'blur'].forEach(e => r.addEventListener(e, off)); });
+q1('#locs tbody').innerHTML = D.locations.map(l => `<tr><td class="mono" style="font-size:11.5px">${l.path}</td><td class="r num">${fmt(l.gb)}</td><td class="r"><span class="pill ${l.gb == null ? 'warn' : 'ok'}">${l.gb == null ? 'Not measured · access required' : 'Measured'}</span></td></tr>`).join('');
+// count-up
+if (!reduce) qa('.cu').forEach(el => { const t = +el.dataset.v, s = performance.now(); (function f(n) { const p = Math.min(1, (n - s) / 600); el.textContent = (t * (1 - Math.pow(1 - p, 3))).toFixed(1) + ' GB'; if (p < 1) requestAnimationFrame(f); })(s); });
+// explore
+const tb = q1('#tbl tbody'); const sel = new Set(['target', 'node']); let cur = 'target';
+tb.innerHTML = D.rows.map(r => `<tr tabindex="0" data-id="${r.id}" aria-selected="false"><td><span class="tw">${icon(r.kind === 'dir' ? 'folder' : 'file')}${r.name}</span></td><td>${r.owner}</td><td>${r.conf}${r.restricted ? ' <span class="pill warn">restricted</span>' : r.protectedItem ? ' <span class="pill">protected</span>' : ''}</td><td>${r.gb == null ? '<span class="pill warn">Not measured · permission denied</span>' : r.status}</td><td class="r num">${fmt(r.gb)}</td><td class="r num" style="color:var(--text2)">${fmt(r.logical)}</td></tr>`).join('');
+q1('#crumb').textContent = '~/Projects/atlas-web';
+const dock = q1('#dock');
+function inspect(id) {
+  cur = id; const r = D.rows.find(x => x.id === id);
+  qa('#tbl tbody tr').forEach(t => t.setAttribute('aria-selected', t.dataset.id === id));
+  const abs = '/Users/sajjad/Projects/atlas-web/' + r.name;
+  const ok = !r.restricted && !r.protectedItem && r.gb != null && r.cat !== 'unknown';
+  const cons = { target: 'Regenerated by cargo build; next build recompiles dependencies. Time not measured.', node: 'Regenerated by package install; needs network if cache is cold.', wt: 'Holds uncommitted changes; removal would lose them.', next: 'Regenerated by next build.', vendor: 'Ownership unknown. Consequence of removal cannot be stated.', git: 'Repository history. Not offered for cleanup.', logs: 'Log history is lost.', src: 'Source code. Not offered for cleanup.', env: 'Unreadable. Access required before anything can be said.' }[id];
+  const ev = { target: 'Cargo.toml, Cargo.lock in parent', node: 'package.json, package-lock.json in parent', wt: '.git file → worktree metadata' }[id] || (r.conf === 'None' ? 'None found' : 'Marker files present');
+  dock.classList.remove('swap'); void dock.offsetWidth; dock.classList.add('swap');
+  dock.innerHTML = `<div><h3>Identity &amp; path</h3><p style="font-weight:600;margin-bottom:6px">${r.name} <span class="pill">${r.kind === 'dir' ? 'folder' : 'file'}</span></p><div class="pathbox">${abs}</div><div style="display:flex;gap:6px;margin-top:8px"><button class="btn" data-copy>${icon('copy')}Copy path</button><button class="btn">${icon('ext')}Show in Finder</button></div></div>
+  <div><h3>Ownership &amp; size</h3><dl class="kv"><dt>Owner</dt><dd>${r.owner}</dd><dt>Confidence</dt><dd>${r.conf}</dd><dt>Evidence</dt><dd>${ev}</dd><dt>Allocated</dt><dd>${fmt(r.gb)}</dd><dt>Logical</dt><dd>${fmt(r.logical)}</dd><dt>Status</dt><dd>${r.status}</dd><dt>Measured</dt><dd>09:41</dd></dl></div>
+  <div><h3>If removed</h3><p>${cons}</p><p style="color:var(--text2);margin:6px 0 10px">Allocated ≠ guaranteed free space on APFS.</p>${ok ? `<button class="btn pri" data-add>${sel.has(id) ? 'In review ✓' : 'Add to review'} <kbd>A</kbd></button><p style="color:var(--text2);margin-top:6px">Method: Move to Trash · recoverable</p>` : `<button class="btn" disabled>Add to review</button><p style="color:var(--text2);margin-top:6px">${r.restricted ? 'Restricted: uncommitted changes.' : r.gb == null ? 'Access required.' : 'No supported cleanup method.'}</p>`}</div>`;
+  q1('[data-copy]', dock)?.addEventListener('click', e => { navigator.clipboard?.writeText(abs); e.currentTarget.lastChild.textContent = 'Copied'; });
+  q1('[data-add]', dock)?.addEventListener('click', () => { sel.add(id); inspect(id); });
+}
+tb.addEventListener('click', e => { const t = e.target.closest('tr'); t && inspect(t.dataset.id); });
+tb.addEventListener('keydown', e => { const rows = qa('#tbl tbody tr'), i = rows.indexOf(e.target.closest('tr')); if (e.key === 'ArrowDown' && rows[i + 1]) { e.preventDefault(); rows[i + 1].focus(); inspect(rows[i + 1].dataset.id); } if (e.key === 'ArrowUp' && rows[i - 1]) { e.preventDefault(); rows[i - 1].focus(); inspect(rows[i - 1].dataset.id); } if (e.key === 'Enter') inspect(e.target.closest('tr').dataset.id); });
+// review drawer
+const drawer = q1('#drawer'), bg = q1('#bg'), foot = q1('#dfoot');
+q1('#ditems').innerHTML = D.review.map(r => `<div class="ditem"><b class="mono" style="font-size:12px">${r.name}</b><b class="num" style="grid-column:2;text-align:right">${fmt(r.gb)}</b><small>${r.method} · <span style="color:${r.reversible ? 'var(--ok)' : 'var(--bad)'}">${r.reversible ? 'reversible' : 'not reversible'}</span></small></div>`).join('');
+function drawerSummary() { foot.innerHTML = `<dl class="kv"><dt>Selected (allocated)</dt><dd>18.1 GB</dd><dt>Estimated recovery</dt><dd>Unknown</dd></dl><p style="color:var(--text2);margin-top:6px">Folder size ≠ recovered space. Measured free-space change is reported after cleanup.</p><div class="row"><button class="btn pri" id="toconfirm">Review &amp; confirm…</button></div>`; q1('#toconfirm').onclick = drawerConfirm; }
+function drawerConfirm() {
+  foot.innerHTML = `<div class="conf"><b>Remove 3 items?</b><p style="color:var(--text2);margin-top:4px">Revalidated just now. Changed items are skipped and marked Changed.</p><label><input type="checkbox" id="ack"><span><b>Docker build cache cannot be undone.</b> Trash items can be restored until emptied.</span></label></div><div class="row" style="margin-top:0"><button class="btn" id="cancel" autofocus>Cancel</button><button class="btn dng" id="go" disabled>Remove 3 items</button></div>`;
+  q1('#ack').onchange = e => q1('#go').disabled = !e.target.checked; q1('#cancel').onclick = drawerSummary; q1('#cancel').focus();
+}
+function openDrawer(confirm) { drawer.hidden = false; bg.hidden = false; confirm ? drawerConfirm() : drawerSummary(); }
+function closeDrawer() { drawer.hidden = true; bg.hidden = true; }
+q1('#rvbtn').onclick = () => openDrawer(false); q1('#dclose').onclick = closeDrawer; bg.onclick = closeDrawer;
+// palette
+const pal = q1('#pal'), palq = q1('#palq'), pall = q1('#pall');
+const cmds = [['Go to', 'Overview', 'G O', 'disk'], ['Go to', 'Explore · atlas-web', 'G E', 'folder'], ['Action', 'Rescan all locations', '⇧R', 'scan'], ['Action', 'Open Review & Clean', 'R', 'list'], ['Path', '~/Projects/atlas-web/target', '9.6 GB', 'folder'], ['Path', '~/Projects/atlas-web/node_modules', '4.8 GB', 'folder'], ['Settings', 'Manage access…', '', 'lock']];
+function renderPal() { const t = palq.value.toLowerCase(); const list = cmds.filter(c => c[1].toLowerCase().includes(t)); pall.innerHTML = list.map((c, i) => `<li role="option" aria-selected="${i === 0}">${icon(c[3])}<span>${c[1]}</span><small>${c[2] || c[0]}</small></li>`).join('') || '<li>No match. Search covers scanned paths only.</li>'; }
+function openPal() { pal.hidden = false; palq.value = ''; renderPal(); palq.focus(); }
+q1('#cmdopen').onclick = openPal; palq.oninput = renderPal;
+addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openPal(); } if (e.key === 'Escape') { pal.hidden = true; if (!drawer.hidden) closeDrawer(); } });
+// nav
+function show(v) { qa('.view').forEach(s => s.hidden = s.id !== 'v-' + v); qa('.rb[data-view]').forEach(b => b.dataset.view === v ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current')); if (v === 'explore') inspect(cur); }
+document.addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) show(b.dataset.view); });
+qa('#cats tbody tr').forEach(r => r.addEventListener('keydown', e => e.key === 'Enter' && show('explore')));
+const v0 = initialView(); show(['review', 'palette'].includes(v0) ? 'overview' : v0);
+if (v0 === 'review') { show('explore'); openDrawer(new URLSearchParams(location.search).has('confirm')); }
+if (v0 === 'palette') openPal();
+</script>
+</body>
+</html>

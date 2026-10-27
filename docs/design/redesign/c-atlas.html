@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reclaim redesign · C · Atlas (visualization-led)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light;--disp:"Bricolage Grotesque","DM Sans",system-ui,sans-serif;--sans:"DM Sans",system-ui,-apple-system,sans-serif;
+--bg:#fbf5ec;--bg-glow:radial-gradient(900px 500px at 12% -10%,#ffd9c2 0,transparent 60%),radial-gradient(800px 500px at 100% 100%,#d9ccff 0,transparent 60%);
+--glass:rgba(255,255,255,.72);--glass2:rgba(255,255,255,.9);--edge:rgba(60,40,90,.16);--text:#241a33;--text2:#5d5270;--accent:#5b3fd6;--accent-text:#4a2fc0;--on-accent:#fff;
+--warn:#7a4a00;--warn-bg:#fff0d0;--bad:#a8261c;--shadow:0 30px 80px rgba(70,40,110,.28);--tile-text:#1c1626;
+--c-deps:#b2bfff;--c-build:#ffcd96;--c-docker:#93e0ee;--c-stores:#dcc2ff;--c-editor:#a2e8bb;--c-worktrees:#ffb6cd;--c-logs:#d5d0df;--c-unknown:#e8e3ee;
+--s-deps:#4a60e6;--s-build:#c96a00;--s-docker:#0a8fa6;--s-stores:#8648dc;--s-editor:#17924d;--s-worktrees:#d82f60;--s-logs:#716a85;--s-unknown:#6d6580}
+[data-theme=dark]{color-scheme:dark;--bg:#120e1c;--bg-glow:radial-gradient(900px 520px at 10% -10%,#36245f 0,transparent 60%),radial-gradient(800px 500px at 100% 110%,#5a2547 0,transparent 60%);
+--glass:rgba(255,255,255,.07);--glass2:rgba(34,27,52,.94);--edge:rgba(255,255,255,.14);--text:#f4f0fb;--text2:#bdb4d1;--accent:#7a5cf0;--accent-text:#c0b0ff;--on-accent:#fff;
+--warn:#f6cd78;--warn-bg:#33270e;--bad:#ff958b;--shadow:0 30px 80px rgba(0,0,0,.7);--tile-text:#1c1626;
+--c-deps:#a3b2ff;--c-build:#ffbf80;--c-docker:#70d9ec;--c-stores:#cda4ff;--c-editor:#86e3a5;--c-worktrees:#ff9dbb;--c-logs:#c4bfd3;--c-unknown:#b9b2c9;
+--s-deps:#a3b2ff;--s-build:#ffbf80;--s-docker:#70d9ec;--s-stores:#cda4ff;--s-editor:#86e3a5;--s-worktrees:#ff9dbb;--s-logs:#c4bfd3;--s-unknown:#b9b2c9}
+*{box-sizing:border-box;margin:0}
+body{font:13.5px/1.45 var(--sans);color:var(--text);background:#0b0912;min-height:100vh;display:grid;place-items:center;padding:20px;-webkit-font-smoothing:antialiased}
+.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent-text);outline-offset:2px;border-radius:10px}
+.win{width:1180px;height:760px;border-radius:22px;background:var(--bg-glow),var(--bg);box-shadow:var(--shadow);position:relative;overflow:hidden;border:1px solid var(--edge)}
+.nav{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:5;display:flex;align-items:center;gap:6px;padding:5px;border-radius:99px;background:var(--glass);backdrop-filter:blur(18px);border:1px solid var(--edge)}
+.tab{position:relative;display:flex;gap:7px;align-items:center;border:0;background:none;padding:7px 15px;border-radius:99px;cursor:pointer;font-weight:500;color:var(--text2)}
+.tab:hover{color:var(--text)}.tab[aria-current=page]{background:var(--accent);color:var(--on-accent);animation:squish .4s cubic-bezier(.3,1.6,.5,1)}
+.tab .n{font:700 11px var(--sans);background:var(--on-accent);color:var(--accent);border-radius:99px;padding:0 6px}.tab:not([aria-current]) .n{background:var(--accent);color:var(--on-accent)}
+.brand{position:absolute;left:22px;top:18px;font:700 19px var(--disp);display:flex;align-items:center;gap:8px;z-index:5}
+.brand i{width:26px;height:26px;border-radius:9px;background:conic-gradient(from 200deg,var(--s-deps),var(--s-stores),var(--s-worktrees),var(--s-build),var(--s-deps))}
+.status{position:absolute;right:20px;top:16px;display:flex;gap:8px;align-items:center;z-index:5}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;background:var(--glass);border:1px solid var(--edge);font-weight:500;white-space:nowrap}
+.chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}.chip .ic{width:15px;height:15px}
+.round{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--edge);background:var(--glass);cursor:pointer}.round:hover{background:var(--glass2)}
+.view{position:absolute;inset:66px 0 0 0;padding:14px 26px 22px;overflow:auto}.view[hidden]{display:none}.view{animation:rise .5s cubic-bezier(.2,.9,.25,1)}
+h1{font:700 30px/1.1 var(--disp);letter-spacing:-.02em}h2{font:700 17px var(--disp)}
+.sub{color:var(--text2)}
+.panel{background:var(--glass);border:1px solid var(--edge);border-radius:20px;backdrop-filter:blur(14px)}
+.ov{display:grid;grid-template-columns:480px 1fr;gap:26px;align-items:center}
+.sb{width:460px;height:460px;display:block;margin:auto;overflow:visible}
+.sl{cursor:pointer;transform-box:view-box;transform-origin:230px 230px;animation:sweep .8s cubic-bezier(.2,.9,.25,1) backwards;animation-delay:var(--d);transition:transform .35s cubic-bezier(.3,1.5,.5,1),opacity .2s;stroke:var(--bg);stroke-width:2;fill:var(--f)}
+.sl:hover,.sl:focus-visible,.sl.on{transform:translate(var(--dx),var(--dy))}
+.sb.dim .sl:not(.on){opacity:.3}.sl.hatch{fill:url(#hatch)}.sl.kid{fill-opacity:.62}.sl.kid.on,.sl.kid:hover{fill-opacity:1}
+.sb :focus-visible{outline:0;stroke:var(--text);stroke-width:3}
+.core{font-family:var(--disp);text-anchor:middle;fill:var(--text);pointer-events:none}
+.legend{display:grid;gap:3px}
+.lg{display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;padding:6px 12px;border-radius:12px;border:0;background:none;text-align:left;cursor:pointer;transition:background .15s,transform .2s}
+.lg:hover,.lg.on{background:var(--glass);transform:translateX(4px)}.lg i{width:14px;height:14px;border-radius:5px;background:var(--s)}.lg i.h{background:repeating-linear-gradient(135deg,var(--s) 0 2px,transparent 2px 4px);border:1px solid var(--s)}
+.lg b{font-weight:500}.lg small{color:var(--text2);margin-left:6px}.lg span{font:700 14px var(--disp);font-variant-numeric:tabular-nums}
+.cov{padding:14px 16px;margin-bottom:12px}.ribbon{display:flex;height:26px;border-radius:99px;overflow:hidden;margin:10px 0 8px;border:1px solid var(--edge)}
+.ribbon i{display:block;animation:grow 1s cubic-bezier(.2,.9,.25,1) backwards;transform-origin:left}.ribbon .m{background:var(--accent)}.ribbon .o{background:repeating-linear-gradient(135deg,var(--text2) 0 2px,transparent 2px 7px)}.ribbon .f{background:transparent}
+.rl{display:flex;justify-content:space-between;font-size:12px;color:var(--text2)}.rl b{color:var(--text);font-family:var(--disp)}
+.btn{display:inline-flex;gap:7px;align-items:center;border:1px solid var(--edge);background:var(--glass2);padding:7px 15px;border-radius:99px;cursor:pointer;font-weight:500;transition:transform .2s cubic-bezier(.3,1.6,.5,1)}
+.btn:hover{transform:translateY(-2px)}.btn:active{transform:scale(.96)}.btn.pri{background:var(--accent);color:var(--on-accent);border-color:transparent}.btn.dng{background:#c43a30;color:#fff;border-color:transparent}.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.sugs{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}.sug{padding:12px 16px;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;align-items:start}
+.sug .ic{grid-row:1/3;margin-top:3px}.sug b{font-weight:700}.sug p{color:var(--text2);font-size:12.5px}
+.ex{display:grid;grid-template-columns:1fr 340px;gap:18px;height:100%}
+.crumbs{display:flex;gap:6px;align-items:center;margin:6px 0 12px;flex-wrap:wrap}.crumbs .chip{cursor:pointer}.crumbs .chip.cur{background:var(--accent);color:var(--on-accent);border-color:transparent}
+.tools{display:flex;gap:10px;align-items:center;margin-bottom:10px}.tools .sp{flex:1}
+.seg{display:inline-flex;padding:3px;border-radius:99px;background:var(--glass);border:1px solid var(--edge)}.seg button{border:0;background:none;padding:4px 14px;border-radius:99px;cursor:pointer;font-weight:500}.seg button[aria-pressed=true]{background:var(--text);color:var(--bg)}
+.tm{position:relative;height:392px;border-radius:20px;overflow:hidden}
+.tile{position:absolute;padding:0;border:0;border-radius:14px;background:var(--c);color:var(--tile-text);text-align:left;cursor:pointer;overflow:hidden;transition:left .5s cubic-bezier(.2,.9,.25,1),top .5s cubic-bezier(.2,.9,.25,1),width .5s cubic-bezier(.2,.9,.25,1),height .5s cubic-bezier(.2,.9,.25,1),transform .25s cubic-bezier(.3,1.6,.5,1),box-shadow .25s,opacity .2s;animation:pop .6s cubic-bezier(.2,.9,.25,1) backwards;animation-delay:var(--d);border:3px solid transparent;background-clip:padding-box}
+.tile>span{position:absolute;inset:0;padding:10px 12px;display:flex;flex-direction:column;gap:2px}.tile b{font:700 15px/1.15 var(--disp);overflow-wrap:anywhere}.tile em{font:500 12px var(--sans);font-style:normal;opacity:.85}.tile small{font-size:11.5px;display:flex;gap:4px;align-items:center;margin-top:auto;font-weight:500}.tile .ic{width:13px;height:13px}
+.tile:hover{transform:translateY(-3px);z-index:2;box-shadow:0 10px 24px rgba(0,0,0,.3)}
+.tile[aria-pressed=true]{outline:3px solid var(--text);outline-offset:-3px;z-index:3;transform:translateY(-4px) scale(1.01);box-shadow:0 14px 30px rgba(0,0,0,.4)}
+.tile.unk{background:repeating-linear-gradient(135deg,var(--c-unknown) 0 6px,color-mix(in srgb,var(--c-unknown) 70%,#fff) 6px 12px)}
+.tile.rst::after{content:"";position:absolute;right:8px;top:8px;width:9px;height:9px;border-radius:50%;background:#d12d2d;box-shadow:0 0 0 2px #fff}
+.tm.dimm .tile:not([aria-pressed=true]){filter:saturate(.55)}
+.nm{display:flex;gap:10px;align-items:center;margin-top:10px;padding:9px 14px;border-radius:14px;border:1.5px dashed var(--text2);color:var(--text2);font-size:12.5px}.nm .ic{width:16px;height:16px}
+.tray{display:flex;align-items:center;gap:10px;margin-top:10px;padding:8px 8px 8px 16px}
+.tray .it{display:inline-flex;gap:6px;align-items:center;background:var(--c);color:var(--tile-text);padding:3px 11px;border-radius:99px;font-weight:700;animation:drop .5s cubic-bezier(.3,1.6,.5,1)}.tray .sp{flex:1}
+.insp{padding:18px;overflow:auto;background:var(--glass2);animation:slidein .45s cubic-bezier(.2,.9,.25,1)}
+.insp .hd{margin:-18px -18px 14px;padding:18px;background:var(--c);color:var(--tile-text);border-radius:20px 20px 0 0}.insp .hd h2{font-size:21px;overflow-wrap:anywhere}.insp .hd p{font-size:12.5px;opacity:.9}
+.big{font:700 34px/1 var(--disp);letter-spacing:-.02em}.big small{font:500 13px var(--sans);color:var(--text2)}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:12px 0}.facts dt{color:var(--text2)}.facts dd{text-align:right}
+.path{font:12px/1.45 ui-monospace,Menlo,monospace;padding:8px 10px;border-radius:12px;background:var(--glass);border:1px solid var(--edge);overflow-wrap:anywhere;user-select:all}
+.insp h3{font:700 11.5px var(--sans);text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin:14px 0 4px}
+.insp .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.tbl{width:100%;border-collapse:collapse}.tbl th{text-align:left;color:var(--text2);font-weight:500;padding:6px 10px}.tbl td{padding:9px 10px;border-top:1px solid var(--edge)}.tbl tr{cursor:pointer}.tbl tr:hover td,.tbl tr[aria-selected=true] td{background:var(--glass)}.tbl .r{text-align:right;font-variant-numeric:tabular-nums}
+dialog{border:0;border-radius:26px;padding:0;width:540px;background:var(--glass2);color:var(--text);box-shadow:var(--shadow);border:1px solid var(--edge);margin:auto}
+dialog[open]{animation:dlg .5s cubic-bezier(.2,1.1,.3,1)}dialog::backdrop{background:rgba(10,6,20,.55);backdrop-filter:blur(6px);animation:fade .3s}
+.dl{padding:26px 28px}.dl h2{font-size:22px}.basket{display:grid;gap:8px;margin:16px 0}
+.bi{display:grid;grid-template-columns:auto 1fr auto;gap:2px 12px;padding:10px 14px;border-radius:16px;background:var(--glass);border:1px solid var(--edge);animation:drop .5s cubic-bezier(.3,1.6,.5,1) backwards;animation-delay:var(--d)}
+.bi i{grid-row:1/3;width:10px;height:10px;border-radius:50%;background:var(--s);align-self:center}.bi small{color:var(--text2);grid-column:2/4}.bi b{font-weight:700}.bi span{font:700 15px var(--disp);text-align:right}
+.tagr{font-weight:700}.tagr.ok{color:var(--s-editor)}[data-theme=light] .tagr.ok{color:#0c6b36}.tagr.no{color:var(--bad)}
+.ackl{display:flex;gap:10px;padding:12px 14px;border-radius:14px;background:var(--warn-bg);color:var(--text);margin-bottom:6px}.ackl input{width:18px;height:18px;accent-color:var(--accent)}
+.dl .row{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+.theme{position:fixed;left:14px;bottom:14px}.theme .btn{font-size:12px}
+@keyframes sweep{from{opacity:0;transform:scale(.35) rotate(-40deg)}}@keyframes grow{from{transform:scaleX(0)}}@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+@keyframes pop{from{opacity:0;transform:scale(.8)}}@keyframes slidein{from{opacity:0;transform:translateX(30px)}}@keyframes drop{from{opacity:0;transform:translateY(-14px) scale(.9)}}
+@keyframes dlg{from{opacity:0;transform:translateY(24px) scale(.94)}}@keyframes fade{from{opacity:0}}@keyframes squish{40%{transform:scale(1.1,.92)}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<symbol id="i-disk" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M3.5 6l1.5 1.5L7 5M3.5 12l1.5 1.5L7 11M3.5 18l1.5 1.5L7 17"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+<symbol id="i-chevr" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+<symbol id="i-chevd" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
+<symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3l9 4.5v9L12 21l-9-4.5v-9z"/><path d="M3 7.5l9 4.5 9-4.5M12 12v9"/></symbol>
+<symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10M18 11c0 4-6 3-12 6"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+<symbol id="i-scan" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 12l6-6"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+<symbol id="i-pkg" viewBox="0 0 24 24"><path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M8 6l8 4v4M12 12v8M4 8l8 4"/></symbol>
+</defs></svg>
+
+<div class="win">
+  <div class="brand"><i></i>Reclaim</div>
+  <nav class="nav" aria-label="Sections">
+    <button class="tab" data-view="overview"><svg class="ic"><use href="#i-disk"/></svg>Overview</button>
+    <button class="tab" data-view="explore"><svg class="ic"><use href="#i-folder"/></svg>Explore</button>
+    <button class="tab" data-view="development"><svg class="ic"><use href="#i-code"/></svg>Development</button>
+    <button class="tab" data-view="review"><svg class="ic"><use href="#i-list"/></svg>Review &amp; Clean<span class="n" aria-label="3 selected">3</span></button>
+  </nav>
+  <div class="status"><span class="chip warn" role="status"><svg class="ic"><use href="#i-warn"/></svg>Partial scan · 3 of 5 locations</span><button class="round" data-view="settings" aria-label="Settings"><svg class="ic"><use href="#i-gear"/></svg></button></div>
+
+  <section class="view" id="v-overview" hidden>
+    <div style="display:flex;align-items:baseline;gap:14px"><h1>Where did the space go?</h1><span class="sub">Macintosh HD · APFS · measured today 09:41</span></div>
+    <div class="ov">
+      <div>
+        <svg class="sb" id="sb" viewBox="0 0 460 460" role="group" aria-label="Sunburst of the 214.6 GB measured in scope. Inner ring: categories. Outer ring: largest items."><defs><pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" style="fill:var(--bg)"/><rect width="3" height="7" style="fill:var(--s-unknown)"/></pattern></defs><g id="sbg"></g>
+          <g class="core" id="core" transform="translate(230 230)"><text y="-14" font-size="13" id="c1">Measured in scope</text><text y="16" font-size="30" font-weight="700" id="c2">214.6 GB</text><text y="36" font-size="12" id="c3" style="fill:var(--text2)">of 812.3 GB used</text></g></svg>
+        <p class="sub" style="text-align:center;font-size:12.5px;max-width:440px;margin:0 auto">Chart covers only what was measured. 597.7 GB outside the scanned scope is not shown as a category.</p>
+      </div>
+      <div>
+        <div class="panel cov"><div style="display:flex;justify-content:space-between;align-items:center"><h2>Coverage is partial</h2><button class="btn" style="padding:4px 12px"><svg class="ic" style="width:15px;height:15px"><use href="#i-lock"/></svg>Review access</button></div>
+          <div class="ribbon" role="img" aria-label="Volume: 214.6 GB measured, 597.7 GB outside scope, 182.4 GB free"><i class="m" style="width:21.6%"></i><i class="o" style="width:60.1%;animation-delay:.15s"></i><i class="f" style="flex:1"></i></div>
+          <div class="rl"><span><b>214.6 GB</b> measured</span><span><b>597.7 GB</b> outside scope · not measured</span><span><b>182.4 GB</b> free</span></div>
+          <p class="sub" style="margin-top:8px;font-size:12.5px">~/Library/Containers and /Library/Developer need access. Their usage is not in any category.</p></div>
+        <div class="legend" id="legend" role="list"></div>
+      </div>
+    </div>
+    <div class="sugs" id="sugs"></div>
+  </section>
+
+  <section class="view" id="v-explore" hidden>
+    <div class="ex">
+      <div style="min-width:0">
+        <div class="crumbs" id="crumbs" aria-label="Path"></div>
+        <div class="tools"><h1 style="font-size:24px">atlas-web</h1><span class="sub">9 entries · hidden shown · tile area = allocated size</span><span class="sp"></span><div class="seg" role="group" aria-label="View"><button id="vchart" aria-pressed="true">Treemap</button><button id="vlist" aria-pressed="false">List</button></div></div>
+        <div id="chart"><div class="tm" id="tm"></div><div class="nm"><svg class="ic"><use href="#i-lock"/></svg><span><b>.env.local</b> not measured · permission denied. Not drawn; absence of a tile does not mean zero.</span></div></div>
+        <div id="list" class="panel" hidden><table class="tbl"><thead><tr><th>Name</th><th>Owner</th><th class="r">Allocated</th><th class="r">Logical</th></tr></thead><tbody></tbody></table></div>
+        <div class="panel tray"><span id="trayitems" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></span><span class="sp"></span><span class="sub">Review tray · 14.4 GB selected</span><button class="btn pri" data-view="review">Review &amp; Clean</button></div>
+      </div>
+      <aside class="panel insp" id="insp" aria-live="polite" aria-label="Inspector"></aside>
+    </div>
+  </section>
+
+  <section class="view" id="v-review" hidden><h1>Review &amp; Clean</h1><p class="sub">Confirm dialog opens on top of Explore. Nothing is removed without it.</p></section>
+  <section class="view" id="v-development" hidden><h1>Development</h1><p class="sub">Projects and Tools. Not mocked here.</p></section>
+  <section class="view" id="v-settings" hidden><h1>Settings</h1><p class="sub">Not mocked here.</p></section>
+</div>
+
+<dialog id="dlg" aria-labelledby="dt"><form method="dialog" class="dl">
+  <h2 id="dt">Remove 3 items?</h2>
+  <p class="sub">Revalidated just now. Anything that changed is skipped and marked Changed.</p>
+  <div class="basket" id="basket"></div>
+  <div class="ackl"><input type="checkbox" id="ack" aria-describedby="acklbl"><label for="ack" id="acklbl"><b>Docker build cache cannot be undone.</b><br>Items moved to Trash can be restored until Trash is emptied.</label></div>
+  <p class="sub" style="font-size:12.5px">Selected 18.1 GB (allocated). Estimated recovery: unknown. Free-space change is measured afterwards.</p>
+  <div class="row"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn dng" id="go" value="go" disabled>Remove 3 items</button></div>
+</form></dialog>
+<div class="theme"><button class="btn" id="theme-toggle" onclick="cycleTheme()"><svg class="ic" style="width:15px;height:15px"><use href="#i-sun"/></svg>Theme</button></div>
+
+<script>
+const RECLAIM = {
+  volume: { name: 'Macintosh HD', fs: 'APFS', total: 994.7, used: 812.3, free: 182.4, measuredAt: 'Today, 09:41' },
+  scope: { measured: 214.6, outside: 597.7 },
+  locations: [
+    { path: '~/Projects', state: 'Measured', gb: 118.4 },
+    { path: '~/Library/Caches', state: 'Measured', gb: 41.7 },
+    { path: '~/.cargo · ~/.npm · ~/.nvm', state: 'Measured', gb: 54.5 },
+    { path: '~/Library/Containers', state: 'Access required', gb: null },
+    { path: '/Library/Developer', state: 'Access required', gb: null }
+  ],
+  categories: [
+    { id: 'deps', name: 'Dependencies', gb: 61.2, items: '14 projects', icon: 'pkg', kids: [['node_modules', 48.9], ['.venv (Python)', 8.4], ['Pods', 3.9]] },
+    { id: 'build', name: 'Build outputs', gb: 38.4, items: '22 folders', icon: 'layers', kids: [['target (Rust)', 24.3], ['.next · dist', 9.6], ['DerivedData', 4.5]] },
+    { id: 'docker', name: 'Docker', gb: 29.6, items: 'Engine inventory', icon: 'box', kids: [['Images', 17.2], ['Volumes · persistent', 8.7], ['Build cache', 3.7]] },
+    { id: 'stores', name: 'Shared stores', gb: 22.1, items: '3 stores', icon: 'disk', kids: [['~/.cargo registry', 9.8], ['~/.npm', 8.4], ['Homebrew cache', 3.9]] },
+    { id: 'editor', name: 'Editor & coding tools', gb: 14.8, items: '4 tools', icon: 'code', kids: [['VS Code', 5.2], ['Cursor', 4.6], ['Claude · Codex', 5.0]] },
+    { id: 'worktrees', name: 'Worktrees', gb: 9.3, items: '5 worktrees · 2 with changes', icon: 'branch', kids: [['feat-billing', 2.1], ['Other worktrees', 7.2]] },
+    { id: 'logs', name: 'Logs', gb: 3.1, items: '31 files', icon: 'file', kids: [['Project logs', 3.1]] },
+    { id: 'unknown', name: 'Unrecognized', gb: 36.1, items: 'Ownership unknown', icon: 'folder', kids: [['Not recognized', 36.1]] }
+  ],
+  suggestions: [
+    { title: 'node_modules in 14 projects', body: '48.9 GB measured. Dependencies can be reinstalled; install time is not measured.', cta: 'Inspect', tone: 'info' },
+    { title: 'Docker volumes may hold data', body: '8.7 GB measured. Persistent container data. Inspection only.', cta: 'Inspect', tone: 'caution' },
+    { title: 'Worktree with uncommitted changes', body: 'feat-billing, 2.1 GB. Changes would be lost. Cleanup restricted.', cta: 'Inspect', tone: 'caution' }
+  ],
+  explorePath: ['Macintosh HD', 'Users', 'sajjad', 'Projects', 'atlas-web'],
+  rows: [
+    { id: 'target', name: 'target', kind: 'dir', owner: 'Rust build output', conf: 'Verified', gb: 9.6, logical: 11.9, status: 'Complete', cat: 'build' },
+    { id: 'node', name: 'node_modules', kind: 'dir', owner: 'JavaScript dependencies', conf: 'Verified', gb: 4.8, logical: 5.3, status: 'Complete', cat: 'deps' },
+    { id: 'wt', name: '.worktrees/feat-billing', kind: 'dir', owner: 'Git worktree', conf: 'High', gb: 2.1, logical: 2.2, status: 'Complete', cat: 'worktrees', restricted: true },
+    { id: 'next', name: '.next', kind: 'dir', owner: 'Next.js build output', conf: 'High', gb: 1.2, logical: 1.3, status: 'Complete', cat: 'build' },
+    { id: 'vendor', name: 'vendor-cache', kind: 'dir', owner: 'Ownership unknown', conf: 'None', gb: 0.52, logical: 0.55, status: 'Complete', cat: 'unknown' },
+    { id: 'git', name: '.git', kind: 'dir', owner: 'Git metadata', conf: 'Verified', gb: 0.64, logical: 0.66, status: 'Complete', cat: 'source', protectedItem: true },
+    { id: 'logs', name: 'logs', kind: 'dir', owner: 'Project logs', conf: 'High', gb: 0.31, logical: 0.31, status: 'Complete', cat: 'logs' },
+    { id: 'src', name: 'src', kind: 'dir', owner: 'Source', conf: 'Verified', gb: 0.012, logical: 0.011, status: 'Complete', cat: 'source', protectedItem: true },
+    { id: 'env', name: '.env.local', kind: 'file', owner: 'Configuration', conf: 'Verified', gb: null, logical: null, status: 'Not measured · permission denied', cat: 'source', protectedItem: true }
+  ],
+  review: [
+    { id: 'target', name: 'atlas-web/target', gb: 9.6, method: 'Move to Trash', reversible: true, note: 'Recoverable from Trash until emptied.' },
+    { id: 'node', name: 'atlas-web/node_modules', gb: 4.8, method: 'Move to Trash', reversible: true, note: 'Recoverable from Trash until emptied.' },
+    { id: 'dockercache', name: 'Docker build cache', gb: 3.7, method: 'docker builder prune (no --force)', reversible: false, note: 'Cannot be undone. Images and volumes are not touched.' }
+  ],
+  blocked: { name: '.worktrees/feat-billing', reason: 'Uncommitted changes. Not eligible for cleanup.' }
+};
+const fmt = (gb) => gb == null ? '—' : gb >= 1 ? gb.toFixed(1) + ' GB' : Math.round(gb * 1000) + ' MB';
+const q1 = (s, r = document) => r.querySelector(s);
+const qa = (s, r = document) => [...r.querySelectorAll(s)];
+const icon = (n, c = '') => `<svg class="ic ${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+(function boot() {
+  const q = new URLSearchParams(location.search);
+  const root = document.documentElement;
+  const media = matchMedia('(prefers-color-scheme: dark)');
+  let mode = q.get('theme') || 'system';
+  window.applyTheme = (m) => { mode = m; root.dataset.theme = m === 'system' ? (media.matches ? 'dark' : 'light') : m; root.dataset.mode = m; const b = q1('#theme-toggle'); if (b) b.setAttribute('aria-label', 'Theme: ' + m + '. Activate to change.'), b.dataset.mode = m; };
+  media.addEventListener('change', () => mode === 'system' && applyTheme('system'));
+  window.cycleTheme = () => applyTheme({ system: 'light', light: 'dark', dark: 'system' }[mode]);
+  window.initialView = () => (location.hash.slice(1) || q.get('view') || 'overview');
+  applyTheme(mode);
+})();
+
+const D = RECLAIM, M = D.scope.measured, NS = 'http://www.w3.org/2000/svg';
+const sv = (id) => id === 'unknown' || id === 'source' ? 'var(--s-unknown)' : `var(--s-${id})`;
+const cv = (id) => id === 'unknown' || id === 'source' ? 'var(--c-unknown)' : `var(--c-${id})`;
+// sunburst
+const cx = 230, cy = 230, gap = .012;
+const arc = (r0, r1, a0, a1) => { const p = (r, a) => [(cx + r * Math.cos(a)).toFixed(2), (cy + r * Math.sin(a)).toFixed(2)], l = a1 - a0 > Math.PI ? 1 : 0, A = p(r1, a0), B = p(r1, a1), C = p(r0, a1), E = p(r0, a0); return `M${A}A${r1} ${r1} 0 ${l} 1 ${B}L${C}A${r0} ${r0} 0 ${l} 0 ${E}Z`; };
+const sbg = q1('#sbg'); let ang = -Math.PI / 2, idx = 0;
+const core = { name: 'Measured in scope', size: '214.6 GB', sub: 'of 812.3 GB used' };
+const setCore = (c) => { q1('#c1').textContent = c.name; q1('#c2').textContent = c.size; q1('#c3').textContent = c.sub; };
+D.categories.forEach(cat => {
+  const span = cat.gb / M * Math.PI * 2, a0 = ang + gap, a1 = ang + span - gap, mid = (a0 + a1) / 2, push = 9;
+  const mk = (r0, r1, from, to, label, fill, kid, info) => { const p = document.createElementNS(NS, 'path'); p.setAttribute('d', arc(r0, r1, from, to)); p.setAttribute('class', 'sl' + (kid ? ' kid' : '') + (cat.id === 'unknown' ? ' hatch' : '')); p.style.cssText = `--f:${fill};--d:${idx++ * 35}ms;--dx:${(Math.cos(mid) * push).toFixed(1)}px;--dy:${(Math.sin(mid) * push).toFixed(1)}px`; p.setAttribute('tabindex', '0'); p.setAttribute('role', 'button'); p.setAttribute('aria-label', label); p.dataset.cat = cat.id; p.dataset.info = JSON.stringify(info); sbg.appendChild(p); return p; };
+  mk(70, 140, a0, a1, `${cat.name}, ${fmt(cat.gb)}, ${(cat.gb / M * 100).toFixed(0)}% of measured scope`, sv(cat.id), false, { name: cat.name, size: fmt(cat.gb), sub: cat.items });
+  let k0 = a0; cat.kids.forEach(([kn, kg]) => { const ks = kg / cat.gb * (a1 - a0), k1 = k0 + ks; mk(146, 212, k0 + .004, Math.max(k0 + .01, k1 - .004), `${kn}, ${fmt(kg)}, in ${cat.name}`, sv(cat.id), true, { name: kn, size: fmt(kg), sub: 'in ' + cat.name }); k0 = k1; });
+  ang += span;
+});
+const sb = q1('#sb');
+function focusCat(id, info) { sb.classList.toggle('dim', !!id); qa('.sl', sb).forEach(s => s.classList.toggle('on', s.dataset.cat === id)); qa('.lg').forEach(l => l.classList.toggle('on', l.dataset.cat === id)); setCore(info || core); }
+sbg.addEventListener('mouseover', e => { const s = e.target.closest('.sl'); s && focusCat(s.dataset.cat, JSON.parse(s.dataset.info)); });
+sbg.addEventListener('focusin', e => { const s = e.target.closest('.sl'); s && focusCat(s.dataset.cat, JSON.parse(s.dataset.info)); });
+['mouseleave', 'focusout'].forEach(ev => sbg.addEventListener(ev, () => focusCat(null)));
+q1('#legend').innerHTML = D.categories.map(c => `<button class="lg" role="listitem" data-cat="${c.id}" data-view="explore" style="--s:${sv(c.id)}"><i class="${c.id === 'unknown' ? 'h' : ''}"></i><b>${c.name}<small>${c.items}</small></b><span>${fmt(c.gb)}</span></button>`).join('');
+qa('.lg').forEach(l => { const c = D.categories.find(x => x.id === l.dataset.cat); ['mouseenter', 'focus'].forEach(ev => l.addEventListener(ev, () => focusCat(c.id, { name: c.name, size: fmt(c.gb), sub: c.items }))); ['mouseleave', 'blur'].forEach(ev => l.addEventListener(ev, () => focusCat(null))); });
+q1('#sugs').innerHTML = D.suggestions.map(s => `<div class="panel sug">${icon(s.tone === 'caution' ? 'warn' : 'pkg')}<b>${s.title}</b><p>${s.body}</p></div>`).join('');
+// treemap
+function squarify(items, x, y, w, h) {
+  const total = items.reduce((a, i) => a + i.v, 0), k = w * h / total; let rest = items.map(i => ({ ...i, a: i.v * k })), out = [];
+  const worst = (row, s) => { const sum = row.reduce((a, i) => a + i.a, 0), mx = Math.max(...row.map(i => i.a)), mn = Math.min(...row.map(i => i.a)); return Math.max(s * s * mx / (sum * sum), sum * sum / (s * s * mn)); };
+  while (rest.length) {
+    const s = Math.min(w, h); let n = 1; while (n < rest.length && worst(rest.slice(0, n + 1), s) <= worst(rest.slice(0, n), s)) n++;
+    const row = rest.slice(0, n); rest = rest.slice(n); const sum = row.reduce((a, i) => a + i.a, 0);
+    if (w >= h) { const rw = sum / h; let yy = y; row.forEach(i => { const hh = i.a / rw; out.push({ ...i, x, y: yy, w: rw, h: hh }); yy += hh; }); x += rw; w -= rw; }
+    else { const rh = sum / w; let xx = x; row.forEach(i => { const ww = i.a / rh; out.push({ ...i, x: xx, y, w: ww, h: rh }); xx += ww; }); y += rh; h -= rh; }
+  }
+  return out;
+}
+const tm = q1('#tm'), measured = D.rows.filter(r => r.gb != null); let cur = 'target'; const sel = new Set(['target', 'node']);
+function layout() { const W = tm.clientWidth || 700, H = tm.clientHeight || 392; return squarify(measured.map(r => ({ ...r, v: Math.max(r.gb, .25) })), 0, 0, W, H); }
+tm.innerHTML = layout().map((t, i) => `<button class="tile ${t.cat === 'unknown' ? 'unk' : ''} ${t.restricted ? 'rst' : ''}" data-id="${t.id}" aria-pressed="false" style="--c:${cv(t.cat)};--d:${i * 50}ms;left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px" aria-label="${t.name}, ${fmt(t.gb)}, ${t.owner}${t.restricted ? ', restricted' : ''}"><span><b>${t.name}</b>${t.h > 52 ? `<em>${fmt(t.gb)}</em>` : ''}${t.h > 90 && t.w > 100 ? `<small>${t.restricted ? icon('warn') + 'Uncommitted changes' : t.protectedItem ? icon('lock') + 'Protected' : t.cat === 'unknown' ? 'Ownership unknown' : t.owner}</small>` : ''}</span></button>`).join('');
+q1('#crumbs').innerHTML = D.explorePath.map((p, i) => `<button class="chip ${i === D.explorePath.length - 1 ? 'cur' : ''}">${i === 0 ? icon('disk') : ''}${p}</button>`).join('');
+q1('#list tbody').innerHTML = D.rows.map(r => `<tr tabindex="0" data-id="${r.id}"><td><b>${r.name}</b></td><td>${r.owner}${r.gb == null ? ' · not measured' : ''}</td><td class="r">${fmt(r.gb)}</td><td class="r">${fmt(r.logical)}</td></tr>`).join('');
+const insp = q1('#insp');
+function inspect(id) {
+  cur = id; const r = D.rows.find(x => x.id === id);
+  qa('.tile').forEach(t => t.setAttribute('aria-pressed', t.dataset.id === id)); tm.classList.add('dimm'); qa('#list tr').forEach(t => t.setAttribute('aria-selected', t.dataset.id === id));
+  const abs = '/Users/sajjad/Projects/atlas-web/' + r.name, ok = !r.restricted && !r.protectedItem && r.gb != null && r.cat !== 'unknown';
+  const cons = { target: 'Recreated by cargo build. Recompiling dependencies takes time; duration not measured.', node: 'Recreated by package install. Needs network if the cache is cold.', wt: 'Holds uncommitted changes. Removing it would lose them.', next: 'Recreated by next build.', vendor: 'Ownership unknown, so consequences cannot be stated.', git: 'Repository history. Never offered for cleanup.', logs: 'Log history is lost.', src: 'Your source code. Never offered.', env: 'Unreadable. Access required.' }[id];
+  insp.style.setProperty('--c', cv(r.cat)); insp.style.animation = 'none'; void insp.offsetWidth; insp.style.animation = '';
+  insp.innerHTML = `<div class="hd"><h2>${r.name}</h2><p>${r.kind === 'dir' ? 'Folder' : 'File'} · ${r.owner} · ${r.conf === 'None' ? 'no evidence' : r.conf + ' confidence'}</p></div>
+  <div class="big">${fmt(r.gb)} <small>allocated · ${fmt(r.logical)} logical</small></div>
+  <dl class="facts"><dt>Measured</dt><dd>Today, 09:41 · ${r.status}</dd><dt>Evidence</dt><dd>${id === 'target' ? 'Cargo.toml + Cargo.lock' : id === 'node' ? 'package.json + lockfile' : r.conf === 'None' ? 'None found' : 'Marker files'}</dd></dl>
+  <h3>Path</h3><div class="path">${abs}</div>
+  <h3>If removed</h3><p>${cons}</p><p class="sub" style="font-size:12px;margin-top:4px">Allocated size is not guaranteed free space on APFS.</p>
+  <div class="acts">${ok ? `<button class="btn pri" data-add>${sel.has(id) ? 'In review tray' : 'Add to review'}</button>` : `<button class="btn" disabled>Add to review</button>`}<button class="btn" data-copy>${icon('copy')}Copy path</button><button class="btn">${icon('ext')}Finder</button></div>
+  ${ok ? '<p class="sub" style="font-size:12px;margin-top:8px">Method: Move to Trash · recoverable until Trash is emptied.</p>' : `<p class="sub" style="font-size:12px;margin-top:8px">${r.restricted ? 'Restricted: uncommitted changes.' : r.gb == null ? 'Access required.' : 'No supported cleanup method.'} Inspection only.</p>`}`;
+  q1('[data-copy]', insp).onclick = e => { navigator.clipboard?.writeText(abs); e.currentTarget.lastChild.textContent = 'Copied'; };
+  q1('[data-add]', insp)?.addEventListener('click', e => { sel.add(id); tray(); e.currentTarget.textContent = 'In review tray'; });
+}
+function tray() { q1('#trayitems').innerHTML = [...sel].map(id => { const r = D.rows.find(x => x.id === id); return `<span class="it" style="--c:${cv(r.cat)}">${r.name} <span style="font-weight:500">${fmt(r.gb)}</span></span>`; }).join(''); }
+tray();
+tm.addEventListener('click', e => { const t = e.target.closest('.tile'); t && inspect(t.dataset.id); });
+q1('#list tbody').addEventListener('click', e => { const t = e.target.closest('tr'); t && inspect(t.dataset.id); });
+q1('#list tbody').addEventListener('keydown', e => { if (e.key === 'Enter') inspect(e.target.closest('tr').dataset.id); });
+const setView = (chart) => { q1('#chart').hidden = !chart; q1('#list').hidden = chart; q1('#vchart').setAttribute('aria-pressed', chart); q1('#vlist').setAttribute('aria-pressed', !chart); };
+q1('#vchart').onclick = () => setView(true); q1('#vlist').onclick = () => setView(false);
+// dialog
+const dlg = q1('#dlg'), ack = q1('#ack'), go = q1('#go');
+q1('#basket').innerHTML = D.review.map((r, i) => { const row = D.rows.find(x => x.id === r.id); const c = row ? row.cat : 'docker'; return `<div class="bi" style="--s:${sv(c)};--d:${i * 90}ms"><i></i><b>${r.name}</b><span>${fmt(r.gb)}</span><small>${r.method} · <span class="tagr ${r.reversible ? 'ok' : 'no'}" style="font:inherit;font-weight:700">${r.reversible ? 'Reversible' : 'Not reversible'}</span></small></div>`; }).join('');
+function openDlg() { ack.checked = false; go.disabled = true; dlg.showModal(); }
+ack.onchange = () => go.disabled = !ack.checked;
+dlg.addEventListener('close', () => { if (location.hash === '#review') show('explore'); });
+// nav
+function show(v) {
+  const base = v === 'review' ? 'explore' : v;
+  qa('.view').forEach(s => s.hidden = s.id !== 'v-' + base);
+  qa('.tab').forEach(b => b.dataset.view === v ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+  if (base === 'explore') { requestAnimationFrame(() => { inspect(cur); }); }
+  if (v === 'review') openDlg();
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) show(b.dataset.view); });
+show(initialView());
+</script>
+</body>
+</html>

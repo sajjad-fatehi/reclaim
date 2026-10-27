@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reclaim redesign · A · Quiet Glass (native macOS)</title>
+<style>
+:root{color-scheme:light;--font:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,"Helvetica Neue",sans-serif;
+--bg:#fff;--bg2:#f5f5f7;--text:#1d1d1f;--text2:#5b5b61;--line:rgba(0,0,0,.11);--accent:#0058d0;--accent-text:#0050bd;--on-accent:#fff;
+--caution-bg:#fff3d6;--caution-text:#6b4200;--caution-line:#e2b24a;--danger:#a8200f;--danger-bg:#fde9e6;
+--sidebar:rgba(238,238,243,.66);--sel:#d9e7fb;--hover:rgba(0,0,0,.045);--shadow:0 22px 60px rgba(20,20,40,.28),0 0 0 .5px rgba(0,0,0,.28);
+--wall:linear-gradient(135deg,#9fc4ff 0%,#d8c2ff 45%,#ffd1c1 100%);
+--c-deps:#3478f6;--c-build:#ff9500;--c-docker:#17a2b8;--c-stores:#a653d8;--c-editor:#2fb350;--c-worktrees:#f0365f;--c-logs:#8e8e93;--hatch:#6e6e76}
+[data-theme=dark]{color-scheme:dark;--bg:#242427;--bg2:#1b1b1d;--text:#f5f5f7;--text2:#a7a7af;--line:rgba(255,255,255,.12);--accent:#0a60dc;--accent-text:#6cadff;
+--caution-bg:#34290f;--caution-text:#f3d08c;--caution-line:#7a5f1c;--danger:#ff8f82;--danger-bg:#3a1f1c;
+--sidebar:rgba(44,44,50,.6);--sel:#1f3a63;--hover:rgba(255,255,255,.06);--shadow:0 22px 60px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.18);
+--wall:linear-gradient(135deg,#223a66 0%,#40285f 50%,#5a2c3c 100%);
+--c-deps:#4d8dff;--c-build:#ff9f2e;--c-docker:#32c2d8;--c-stores:#bf6dee;--c-editor:#3bd05f;--c-worktrees:#ff5c7f;--c-logs:#9a9aa1;--hatch:#8b8b94}
+*{box-sizing:border-box;margin:0}
+body{font:13px/1.45 var(--font);color:var(--text);background:var(--wall);min-height:100vh;display:grid;place-items:center;padding:24px;-webkit-font-smoothing:antialiased}
+.ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px;border-radius:6px}
+.window{width:1180px;height:760px;border-radius:12px;box-shadow:var(--shadow);display:grid;grid-template-columns:232px 1fr;overflow:hidden;position:relative}
+.sidebar{background:var(--sidebar);backdrop-filter:blur(30px) saturate(1.8);padding:14px 10px;display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--line)}
+.lights{display:flex;gap:8px;padding:2px 8px 18px}.lights i{width:12px;height:12px;border-radius:50%;background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.side-label{font-size:11px;font-weight:600;color:var(--text2);padding:8px 10px 4px;letter-spacing:.02em}
+.nav{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:8px;border:0;background:none;text-align:left;cursor:pointer;width:100%;position:relative}
+.nav:hover{background:var(--hover)}.nav[aria-current=page]{background:var(--accent);color:var(--on-accent)}
+.nav .ic{width:18px;height:18px}.nav[aria-current=page] .ic{animation:bounce .45s cubic-bezier(.3,1.6,.5,1)}
+.badge{margin-left:auto;font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--hover);font-variant-numeric:tabular-nums}.nav[aria-current=page] .badge{background:rgba(255,255,255,.28)}
+.side-foot{margin-top:auto;padding:10px;border-top:1px solid var(--line);font-size:12px;color:var(--text2)}
+.scan-chip{display:flex;gap:8px;align-items:flex-start}.scan-chip b{color:var(--text);display:block}
+.main{background:var(--bg);display:flex;flex-direction:column;min-width:0}
+.toolbar{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 86%,transparent)}
+.toolbar h2{font-size:15px;font-weight:600}
+.seg{display:inline-flex;background:var(--bg2);border-radius:8px;padding:2px;border:1px solid var(--line)}
+.seg button{border:0;background:none;padding:3px 12px;border-radius:6px;cursor:pointer}.seg button[aria-pressed=true]{background:var(--bg);box-shadow:0 1px 3px rgba(0,0,0,.2);font-weight:600}
+.spacer{flex:1}
+.field{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:4px 10px;color:var(--text2);width:220px}
+.field input{border:0;background:none;outline:0;flex:1;min-width:0;color:var(--text)}.field:focus-within{outline:2px solid var(--accent-text);outline-offset:1px}
+.btn{border:1px solid var(--line);background:var(--bg);border-radius:7px;padding:4px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 1px rgba(0,0,0,.08)}
+.btn:hover{background:var(--bg2)}.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:transparent}.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{background:var(--danger);color:#fff;border-color:transparent}[data-theme=dark] .btn.danger{background:#c63a2b}
+.btn:disabled{opacity:.45;cursor:not-allowed}.btn.icon{padding:5px}
+.scroll{overflow:auto;flex:1;padding:22px 28px 32px}
+.view[hidden]{display:none}
+.view{animation:enter .35s cubic-bezier(.2,.8,.2,1)}
+h1{font-size:26px;font-weight:700;letter-spacing:-.02em}.sub{color:var(--text2);margin-top:2px}
+h3{font-size:15px;font-weight:600;margin:26px 0 8px}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px}
+.cap{margin-top:18px;padding:16px 18px}
+.bar{height:22px;border-radius:7px;background:var(--bg);border:1px solid var(--line);display:flex;overflow:hidden;position:relative}
+.bar>i{display:block;height:100%;background:var(--c);transform-origin:left;animation:grow .8s cubic-bezier(.2,.9,.25,1) backwards;animation-delay:calc(var(--n)*50ms);min-width:2px;transition:opacity .2s}
+.bar>i+i{box-shadow:inset 1px 0 0 var(--bg2)}
+.bar>i.out{background:repeating-linear-gradient(135deg,var(--hatch) 0 1.5px,transparent 1.5px 6px),color-mix(in srgb,var(--text2) 12%,var(--bg))}
+.bar.dim>i:not(.on){opacity:.28}
+.legend{display:flex;gap:18px;margin-top:10px;color:var(--text2);flex-wrap:wrap}.legend span{display:flex;gap:6px;align-items:center}
+.dot{width:10px;height:10px;border-radius:3px;background:var(--c,var(--text2))}.dot.out{background:repeating-linear-gradient(135deg,var(--text2) 0 2px,transparent 2px 4px);border:1px solid var(--text2)}
+.nums{display:flex;gap:28px;margin-top:14px}.nums div{display:flex;flex-direction:column}.nums b{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}.nums small{color:var(--text2)}
+.banner{display:flex;gap:12px;margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--caution-bg);color:var(--caution-text);border:1px solid var(--caution-line)}
+.banner b{display:block;color:inherit}.banner .btn{margin-top:8px}.banner .ic{margin-top:2px}
+.group{background:var(--bg2);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.row{display:grid;grid-template-columns:28px minmax(0,1.2fr) minmax(0,1fr) 78px 18px;align-items:center;gap:12px;padding:9px 14px;border:0;background:none;width:100%;text-align:left;cursor:pointer;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}.row:hover{background:var(--hover)}
+.chip{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:var(--c);color:#fff;transition:transform .25s cubic-bezier(.3,1.6,.5,1)}
+.chip .ic{width:15px;height:15px}.row:hover .chip{transform:scale(1.12) rotate(-4deg)}
+.row small{display:block;color:var(--text2)}.row .meter{height:6px;border-radius:3px;background:var(--bg);border:1px solid var(--line);overflow:hidden}.row .meter i{display:block;height:100%;background:var(--c);transform-origin:left;animation:grow .8s cubic-bezier(.2,.9,.25,1) backwards}
+.row .size{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}.row .ic.go{color:var(--text2);transition:transform .2s}.row:hover .ic.go{transform:translateX(3px)}
+.row.unk .chip{background:repeating-linear-gradient(135deg,var(--text2) 0 2px,var(--bg) 2px 5px);color:var(--text)}
+.sugs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.sug{padding:14px;display:flex;flex-direction:column;gap:6px}.sug b{font-weight:600}.sug p{color:var(--text2);flex:1}.sug .btn{align-self:flex-start;margin-top:6px}
+.explore{display:grid;grid-template-columns:1fr 320px;flex:1;min-height:0}
+.listwrap{display:flex;flex-direction:column;min-width:0;min-height:0}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{position:sticky;top:0;background:var(--bg);text-align:left;font-weight:500;color:var(--text2);padding:7px 12px;border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}
+.tbl td{padding:7px 12px;border-bottom:1px solid var(--line)}
+.tbl tbody tr{cursor:pointer}.tbl tbody tr:nth-child(even){background:var(--hover)}.tbl tbody tr:hover{background:var(--hover)}
+.tbl tbody tr[aria-selected=true]{background:var(--sel)}
+.tbl .num{text-align:right;font-variant-numeric:tabular-nums}.tbl .nm{display:flex;gap:8px;align-items:center}.tbl .nm .ic{color:var(--accent-text)}
+.tbl small{color:var(--text2)}
+.tag{display:inline-flex;gap:4px;align-items:center;font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--bg2);border:1px solid var(--line)}
+.tag.warn{background:var(--caution-bg);color:var(--caution-text);border-color:var(--caution-line)}
+.pathbar{flex:none;display:flex;align-items:center;gap:2px;padding:7px 14px;border-top:1px solid var(--line);background:var(--bg2);color:var(--text2);font-size:12px;overflow:hidden;white-space:nowrap}
+.pathbar b{color:var(--text);font-weight:500}.pathbar .ic{width:12px;height:12px}
+.insp{border-left:1px solid var(--line);background:var(--bg2);overflow:auto;padding:18px 18px 24px}
+.insp.swap>*{animation:enter .3s cubic-bezier(.2,.8,.2,1) backwards}
+.insp h2{font-size:17px;font-weight:650;word-break:break-all}.insp .kind{color:var(--text2)}
+.sec{margin-top:16px}.sec h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:6px;font-weight:600}
+dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px}dt{color:var(--text2)}dd{text-align:right;font-variant-numeric:tabular-nums}
+.path{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;word-break:break-all;user-select:all}
+.note{color:var(--text2);font-size:12px;margin-top:6px}
+.acts{display:flex;flex-direction:column;gap:6px;margin-top:16px}.acts .btn{justify-content:center}
+.rv{padding:12px 14px;display:grid;grid-template-columns:1fr auto;gap:2px 12px;border-top:1px solid var(--line)}.rv:first-child{border-top:0}
+.rv small{color:var(--text2)}.rv .gb{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+dialog{border:0;border-radius:14px;padding:0;width:520px;color:var(--text);background:var(--bg);box-shadow:var(--shadow);margin:70px auto auto;transform-origin:top center}
+dialog[open]{animation:sheet .38s cubic-bezier(.2,1,.3,1)}dialog::backdrop{background:rgba(0,0,0,.28);animation:fade .25s}
+.sheet{padding:22px 24px}.sheet h2{font-size:17px;font-weight:650}.sheet .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+.sheet label{display:flex;gap:8px;align-items:flex-start;margin-top:14px;padding:10px 12px;border-radius:9px;background:var(--danger-bg);color:var(--text)}
+.sheet input[type=checkbox]{width:16px;height:16px;margin-top:2px;accent-color:var(--accent)}
+.theme{position:fixed;right:16px;bottom:16px}.theme .btn{background:var(--bg);box-shadow:0 4px 14px rgba(0,0,0,.25)}
+@keyframes grow{from{transform:scaleX(0)}}@keyframes enter{from{opacity:0;transform:translateY(6px)}}@keyframes fade{from{opacity:0}}
+@keyframes bounce{40%{transform:scale(1.25)}}@keyframes sheet{from{opacity:0;transform:translateY(-24px) scale(.97)}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<symbol id="i-disk" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M3.5 6l1.5 1.5L7 5M3.5 12l1.5 1.5L7 11M3.5 18l1.5 1.5L7 17"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+<symbol id="i-chevr" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+<symbol id="i-chevd" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
+<symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3l9 4.5v9L12 21l-9-4.5v-9z"/><path d="M3 7.5l9 4.5 9-4.5M12 12v9"/></symbol>
+<symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="9" r="2"/><path d="M6 7v10M18 11c0 4-6 3-12 6"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+<symbol id="i-scan" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 12l6-6"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+<symbol id="i-pkg" viewBox="0 0 24 24"><path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M8 6l8 4v4M12 12v8M4 8l8 4"/></symbol>
+</defs></svg>
+
+<div class="window">
+  <nav class="sidebar" aria-label="Sections">
+    <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="side-label">Reclaim</div>
+    <button class="nav" data-view="overview"><svg class="ic"><use href="#i-disk"/></svg>Overview</button>
+    <button class="nav" data-view="explore"><svg class="ic"><use href="#i-folder"/></svg>Explore</button>
+    <button class="nav" data-view="development"><svg class="ic"><use href="#i-code"/></svg>Development</button>
+    <button class="nav" data-view="review"><svg class="ic"><use href="#i-list"/></svg>Review &amp; Clean<span class="badge" aria-label="3 items selected">3</span></button>
+    <div class="side-foot">
+      <button class="nav" data-view="settings" style="padding-left:0"><svg class="ic"><use href="#i-gear"/></svg>Settings</button>
+      <div class="scan-chip" style="margin-top:8px"><svg class="ic" style="color:#b86e00"><use href="#i-warn"/></svg><span><b>Partial scan</b>3 of 5 locations<br>Measured today, 09:41</span></div>
+    </div>
+  </nav>
+  <div class="main">
+    <header class="toolbar">
+      <h2 id="title">Overview</h2><span class="spacer"></span>
+      <div class="seg" id="metric" role="group" aria-label="Size metric"><button aria-pressed="true">Allocated</button><button aria-pressed="false">Logical</button></div>
+      <label class="field"><svg class="ic"><use href="#i-search"/></svg><input placeholder="Search scanned paths" aria-label="Search scanned paths"></label>
+      <button class="btn primary" id="rescan"><svg class="ic"><use href="#i-scan"/></svg>Rescan</button>
+    </header>
+
+    <section class="view scroll" id="v-overview" hidden aria-labelledby="title">
+      <h1>Macintosh HD</h1>
+      <p class="sub">APFS · 994.7 GB · Measured today at 09:41</p>
+      <div class="card cap">
+        <div class="bar" id="volbar" role="img" aria-label="Volume usage: 214.6 GB measured in scope, 597.7 GB outside scanned scope, 182.4 GB free"></div>
+        <div class="legend" id="vollegend"></div>
+        <div class="nums"><div><b>812.3 GB</b><small>Used on volume</small></div><div><b>214.6 GB</b><small>Measured in scope</small></div><div><b>597.7 GB</b><small>Outside scope · not measured</small></div><div><b>182.4 GB</b><small>Free</small></div></div>
+      </div>
+      <div class="banner" role="note"><svg class="ic"><use href="#i-lock"/></svg><div><b>Partial coverage: 3 of 5 locations measured</b>~/Library/Containers and /Library/Developer need access. Space there is not counted in any category below.<br><button class="btn">Review access…</button></div></div>
+
+      <h3>Follow the space</h3>
+      <div class="group" id="cats"></div>
+      <p class="note">Shares are of the 214.6 GB measured in scope, not of the whole volume.</p>
+
+      <h3>Worth inspecting</h3>
+      <div class="sugs" id="sugs"></div>
+    </section>
+
+    <div class="view explore" id="v-explore" hidden>
+      <div class="listwrap">
+        <div style="padding:14px 18px 8px"><h1 style="font-size:20px">atlas-web</h1><p class="sub">9 entries · hidden entries shown · sorted by allocated size · 1 entry not measured</p></div>
+        <div style="overflow:auto;flex:1"><table class="tbl" id="tbl"><thead><tr><th>Name</th><th>Owner</th><th>Status</th><th class="num">Allocated</th></tr></thead><tbody></tbody></table></div>
+        <div class="pathbar" id="pathbar" aria-label="Path"></div>
+      </div>
+      <aside class="insp" id="insp" aria-live="polite" aria-label="Inspector"></aside>
+    </div>
+
+    <section class="view scroll" id="v-review" hidden>
+      <h1>Review &amp; Clean</h1>
+      <p class="sub">Nothing is removed until you confirm. Each item shows its method and whether it can be undone.</p>
+      <h3>Selected · 3 items</h3>
+      <div class="group" id="rvlist"></div>
+      <div class="card" style="padding:14px 16px;margin-top:14px"><dl><dt>Selected measurement (allocated)</dt><dd><b>18.1 GB</b></dd><dt>Estimated recovery</dt><dd>Unknown</dd></dl><p class="note">APFS clones and shared blocks mean the folder size may not equal freed space. Reclaim reports measured free-space change afterwards, with its limits.</p></div>
+      <div class="banner" role="note" style="margin-top:14px"><svg class="ic"><use href="#i-branch"/></svg><div><b>.worktrees/feat-billing is not eligible</b>Uncommitted changes would be lost. Inspect it instead.</div></div>
+      <div style="display:flex;gap:8px;margin-top:18px"><button class="btn primary" id="openSheet">Review &amp; remove…</button><button class="btn" data-view="explore">Back to Explore</button></div>
+    </section>
+
+    <section class="view scroll" id="v-development" hidden><h1>Development</h1><p class="sub">Projects and Tools tabs. Out of scope for this mockup; see Overview and Explore.</p></section>
+    <section class="view scroll" id="v-settings" hidden><h1>Settings</h1><p class="sub">Scan locations · Exclusions · Access · Appearance. Out of scope for this mockup.</p></section>
+  </div>
+</div>
+
+<dialog id="sheet" aria-labelledby="sheet-t"><form method="dialog" class="sheet">
+  <h2 id="sheet-t">Remove 3 selected items?</h2>
+  <p class="note" style="font-size:13px">Revalidated just now. If an item changed, it is skipped and marked Changed.</p>
+  <div class="group" id="sheetlist" style="margin-top:12px"></div>
+  <label><input type="checkbox" id="ack"><span><b>Docker build cache cannot be restored.</b><br>I understand this part is not reversible.</span></label>
+  <div class="actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn danger" id="go" value="go" disabled>Remove 3 items</button></div>
+</form></dialog>
+
+<div class="theme"><button class="btn" id="theme-toggle" onclick="cycleTheme()"><svg class="ic"><use href="#i-sun"/></svg>Theme</button></div>
+
+<script>
+const RECLAIM = {
+  volume: { name: 'Macintosh HD', fs: 'APFS', total: 994.7, used: 812.3, free: 182.4, measuredAt: 'Today, 09:41' },
+  scope: { measured: 214.6, outside: 597.7 },
+  locations: [
+    { path: '~/Projects', state: 'Measured', gb: 118.4 },
+    { path: '~/Library/Caches', state: 'Measured', gb: 41.7 },
+    { path: '~/.cargo · ~/.npm · ~/.nvm', state: 'Measured', gb: 54.5 },
+    { path: '~/Library/Containers', state: 'Access required', gb: null },
+    { path: '/Library/Developer', state: 'Access required', gb: null }
+  ],
+  categories: [
+    { id: 'deps', name: 'Dependencies', gb: 61.2, items: '14 projects', icon: 'pkg', kids: [['node_modules', 48.9], ['.venv (Python)', 8.4], ['Pods', 3.9]] },
+    { id: 'build', name: 'Build outputs', gb: 38.4, items: '22 folders', icon: 'layers', kids: [['target (Rust)', 24.3], ['.next · dist', 9.6], ['DerivedData', 4.5]] },
+    { id: 'docker', name: 'Docker', gb: 29.6, items: 'Engine inventory', icon: 'box', kids: [['Images', 17.2], ['Volumes · persistent', 8.7], ['Build cache', 3.7]] },
+    { id: 'stores', name: 'Shared stores', gb: 22.1, items: '3 stores', icon: 'disk', kids: [['~/.cargo registry', 9.8], ['~/.npm', 8.4], ['Homebrew cache', 3.9]] },
+    { id: 'editor', name: 'Editor & coding tools', gb: 14.8, items: '4 tools', icon: 'code', kids: [['VS Code', 5.2], ['Cursor', 4.6], ['Claude · Codex', 5.0]] },
+    { id: 'worktrees', name: 'Worktrees', gb: 9.3, items: '5 worktrees · 2 with changes', icon: 'branch', kids: [['feat-billing', 2.1], ['Other worktrees', 7.2]] },
+    { id: 'logs', name: 'Logs', gb: 3.1, items: '31 files', icon: 'file', kids: [['Project logs', 3.1]] },
+    { id: 'unknown', name: 'Unrecognized', gb: 36.1, items: 'Ownership unknown', icon: 'folder', kids: [['Not recognized', 36.1]] }
+  ],
+  suggestions: [
+    { title: 'node_modules in 14 projects', body: '48.9 GB measured. Dependencies can be reinstalled; install time is not measured.', cta: 'Inspect', tone: 'info' },
+    { title: 'Docker volumes may hold data', body: '8.7 GB measured. Persistent container data. Inspection only.', cta: 'Inspect', tone: 'caution' },
+    { title: 'Worktree with uncommitted changes', body: 'feat-billing, 2.1 GB. Changes would be lost. Cleanup restricted.', cta: 'Inspect', tone: 'caution' }
+  ],
+  explorePath: ['Macintosh HD', 'Users', 'sajjad', 'Projects', 'atlas-web'],
+  rows: [
+    { id: 'target', name: 'target', kind: 'dir', owner: 'Rust build output', conf: 'Verified', gb: 9.6, logical: 11.9, status: 'Complete', cat: 'build' },
+    { id: 'node', name: 'node_modules', kind: 'dir', owner: 'JavaScript dependencies', conf: 'Verified', gb: 4.8, logical: 5.3, status: 'Complete', cat: 'deps' },
+    { id: 'wt', name: '.worktrees/feat-billing', kind: 'dir', owner: 'Git worktree', conf: 'High', gb: 2.1, logical: 2.2, status: 'Complete', cat: 'worktrees', restricted: true },
+    { id: 'next', name: '.next', kind: 'dir', owner: 'Next.js build output', conf: 'High', gb: 1.2, logical: 1.3, status: 'Complete', cat: 'build' },
+    { id: 'vendor', name: 'vendor-cache', kind: 'dir', owner: 'Ownership unknown', conf: 'None', gb: 0.52, logical: 0.55, status: 'Complete', cat: 'unknown' },
+    { id: 'git', name: '.git', kind: 'dir', owner: 'Git metadata', conf: 'Verified', gb: 0.64, logical: 0.66, status: 'Complete', cat: 'source', protectedItem: true },
+    { id: 'logs', name: 'logs', kind: 'dir', owner: 'Project logs', conf: 'High', gb: 0.31, logical: 0.31, status: 'Complete', cat: 'logs' },
+    { id: 'src', name: 'src', kind: 'dir', owner: 'Source', conf: 'Verified', gb: 0.012, logical: 0.011, status: 'Complete', cat: 'source', protectedItem: true },
+    { id: 'env', name: '.env.local', kind: 'file', owner: 'Configuration', conf: 'Verified', gb: null, logical: null, status: 'Not measured · permission denied', cat: 'source', protectedItem: true }
+  ],
+  review: [
+    { id: 'target', name: 'atlas-web/target', gb: 9.6, method: 'Move to Trash', reversible: true, note: 'Recoverable from Trash until emptied.' },
+    { id: 'node', name: 'atlas-web/node_modules', gb: 4.8, method: 'Move to Trash', reversible: true, note: 'Recoverable from Trash until emptied.' },
+    { id: 'dockercache', name: 'Docker build cache', gb: 3.7, method: 'docker builder prune (no --force)', reversible: false, note: 'Cannot be undone. Images and volumes are not touched.' }
+  ],
+  blocked: { name: '.worktrees/feat-billing', reason: 'Uncommitted changes. Not eligible for cleanup.' }
+};
+const fmt = (gb) => gb == null ? '—' : gb >= 1 ? gb.toFixed(1) + ' GB' : Math.round(gb * 1000) + ' MB';
+const q1 = (s, r = document) => r.querySelector(s);
+const qa = (s, r = document) => [...r.querySelectorAll(s)];
+const icon = (n, c = '') => `<svg class="ic ${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+(function boot() {
+  const q = new URLSearchParams(location.search);
+  const root = document.documentElement;
+  const media = matchMedia('(prefers-color-scheme: dark)');
+  let mode = q.get('theme') || 'system';
+  window.applyTheme = (m) => { mode = m; root.dataset.theme = m === 'system' ? (media.matches ? 'dark' : 'light') : m; root.dataset.mode = m; const b = q1('#theme-toggle'); if (b) b.setAttribute('aria-label', 'Theme: ' + m + '. Activate to change.'), b.dataset.mode = m; };
+  media.addEventListener('change', () => mode === 'system' && applyTheme('system'));
+  window.cycleTheme = () => applyTheme({ system: 'light', light: 'dark', dark: 'system' }[mode]);
+  window.initialView = () => (location.hash.slice(1) || q.get('view') || 'overview');
+  applyTheme(mode);
+})();
+
+const D = RECLAIM, V = D.volume;
+const colorOf = (id) => id === 'unknown' ? 'var(--text2)' : `var(--c-${id})`;
+const pct = (gb) => (gb / V.total * 100);
+// volume bar
+const vol = q1('#volbar'); let n = 0;
+D.categories.filter(c => c.id !== 'unknown').forEach(c => vol.insertAdjacentHTML('beforeend', `<i data-cat="${c.id}" style="--c:${colorOf(c.id)};--n:${n++};width:${pct(c.gb)}%"></i>`));
+vol.insertAdjacentHTML('beforeend', `<i data-cat="unknown" style="--c:var(--text2);--n:${n++};width:${pct(36.1)}%;opacity:.55"></i><i class="out" style="--n:${n++};width:${pct(D.scope.outside)}%"></i>`);
+q1('#vollegend').innerHTML = `<span><i class="dot" style="--c:var(--c-deps)"></i>Recognized categories</span><span><i class="dot" style="--c:var(--text2);opacity:.55"></i>Unrecognized in scope</span><span><i class="dot out"></i>Outside scanned scope (not measured)</span><span>Empty track = free space</span>`;
+// categories
+q1('#cats').innerHTML = D.categories.map((c, i) => `<button class="row ${c.id === 'unknown' ? 'unk' : ''}" data-cat="${c.id}" data-view="explore" aria-label="${c.name}, ${fmt(c.gb)}, ${(c.gb / D.scope.measured * 100).toFixed(0)}% of measured scope. Inspect in Explore"><span class="chip" style="--c:${colorOf(c.id)}">${icon(c.icon)}</span><span><b>${c.name}</b><small>${c.items}</small></span><span class="meter"><i style="--c:${colorOf(c.id)};width:${c.gb / D.scope.measured * 100}%;animation-delay:${i * 60}ms"></i></span><span class="size">${fmt(c.gb)}</span>${icon('chevr', 'go')}</button>`).join('');
+qa('#cats .row').forEach(r => { const on = () => { vol.classList.add('dim'); qa('#volbar i').forEach(s => s.classList.toggle('on', s.dataset.cat === r.dataset.cat)); }, off = () => { vol.classList.remove('dim'); }; r.addEventListener('mouseenter', on); r.addEventListener('focus', on); r.addEventListener('mouseleave', off); r.addEventListener('blur', off); });
+q1('#sugs').innerHTML = D.suggestions.map(s => `<div class="card sug"><span class="tag ${s.tone === 'caution' ? 'warn' : ''}">${icon(s.tone === 'caution' ? 'warn' : 'info')}${s.tone === 'caution' ? 'Handle with care' : 'Evidence-backed'}</span><b>${s.title}</b><p>${s.body}</p><button class="btn" data-view="explore">${s.cta}</button></div>`).join('');
+// explore
+const tb = q1('#tbl tbody');
+tb.innerHTML = D.rows.map(r => `<tr tabindex="0" data-id="${r.id}" aria-selected="false"><td><span class="nm">${icon(r.kind === 'dir' ? 'folder' : 'file')}${r.name}</span></td><td>${r.owner}${r.restricted ? ' <span class="tag warn">Restricted</span>' : ''}${r.protectedItem ? ' <span class="tag">Protected</span>' : ''}</td><td>${r.gb == null ? '<span class="tag warn">' + icon('lock') + 'Not measured</span>' : r.status}</td><td class="num">${fmt(r.gb)}</td></tr>`).join('');
+q1('#pathbar').innerHTML = D.explorePath.map((p, i) => (i ? icon('chevr') : '') + (i === D.explorePath.length - 1 ? `<b>${p}</b>` : `<span>${p}</span>`)).join('');
+const insp = q1('#insp'); const sel = new Set(['target', 'node']);
+function inspect(id) {
+  const r = D.rows.find(x => x.id === id);
+  qa('#tbl tbody tr').forEach(t => t.setAttribute('aria-selected', t.dataset.id === id));
+  const abs = '/Users/sajjad/Projects/atlas-web/' + r.name;
+  const eligible = !r.restricted && !r.protectedItem && r.gb != null && r.cat !== 'unknown';
+  const cons = { target: 'Recreated by cargo build. The next build recompiles dependencies; time not measured.', node: 'Recreated by package install. Requires network access if the package cache is cold.', wt: 'Contains uncommitted changes. Removing it would lose them.', next: 'Recreated by next build.', vendor: 'Ownership unknown. Reclaim cannot say what removing it breaks.', git: 'Repository history. Never offered for cleanup.', logs: 'Log history is lost.', src: 'Your source code.', env: 'Not readable. Access required.' }[r.id];
+  insp.classList.remove('swap'); void insp.offsetWidth; insp.classList.add('swap');
+  insp.innerHTML = `<div><h2>${r.name}</h2><p class="kind">${r.kind === 'dir' ? 'Folder' : 'File'} · ${r.owner}</p></div>
+  <div class="sec"><h4>Path</h4><div class="path">${abs}</div><div class="acts" style="flex-direction:row;margin-top:8px"><button class="btn" data-copy><svg class="ic"><use href="#i-copy"/></svg>Copy path</button><button class="btn"><svg class="ic"><use href="#i-ext"/></svg>Show in Finder</button></div></div>
+  <div class="sec"><h4>Ownership &amp; evidence</h4><dl><dt>Owner</dt><dd>${r.owner}</dd><dt>Confidence</dt><dd>${r.conf}</dd><dt>Evidence</dt><dd>${r.id === 'target' ? 'Cargo.toml + Cargo.lock in parent' : r.id === 'node' ? 'package.json + lockfile in parent' : r.conf === 'None' ? 'None found' : 'Marker files present'}</dd></dl></div>
+  <div class="sec"><h4>Size &amp; measurement</h4><dl><dt>Allocated</dt><dd>${fmt(r.gb)}</dd><dt>Logical</dt><dd>${fmt(r.logical)}</dd><dt>Status</dt><dd>${r.status}</dd><dt>Measured</dt><dd>Today, 09:41</dd></dl><p class="note">Allocated size is space on disk. It may differ from what is freed on APFS.</p></div>
+  <div class="sec"><h4>If removed</h4><p>${cons}</p></div>
+  <div class="acts">${eligible ? `<button class="btn primary" data-add="${r.id}">${sel.has(r.id) ? 'In review' : 'Add to review'}</button><p class="note" style="text-align:center">Method: Move to Trash. Recoverable until Trash is emptied.</p>` : `<button class="btn" disabled>Add to review unavailable</button><p class="note" style="text-align:center">${r.restricted ? 'Uncommitted changes.' : r.gb == null ? 'Access required to measure.' : 'No supported cleanup method.'} Inspection only.</p>`}</div>`;
+  q1('[data-copy]', insp)?.addEventListener('click', e => { navigator.clipboard?.writeText(abs); e.currentTarget.lastChild.textContent = 'Copied'; });
+  q1('[data-add]', insp)?.addEventListener('click', e => { sel.add(r.id); e.currentTarget.textContent = 'In review'; });
+}
+tb.addEventListener('click', e => { const t = e.target.closest('tr'); t && inspect(t.dataset.id); });
+tb.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { const t = e.target.closest('tr'); if (t) { e.preventDefault(); inspect(t.dataset.id); } } });
+// review
+q1('#rvlist').innerHTML = D.review.map(r => `<div class="rv"><b>${r.name}</b><span class="gb">${fmt(r.gb)}</span><small>${r.method} · ${r.reversible ? 'Reversible' : 'Not reversible'}</small><small style="text-align:right"><a href="#" onclick="return false">Remove from selection</a></small></div>`).join('');
+q1('#sheetlist').innerHTML = D.review.map(r => `<div class="rv"><b>${r.name}</b><span class="gb">${fmt(r.gb)}</span><small style="grid-column:1/-1">${r.method}. ${r.note}</small></div>`).join('');
+const sheet = q1('#sheet'), ack = q1('#ack'), go = q1('#go');
+q1('#openSheet').onclick = () => { ack.checked = false; go.disabled = true; sheet.showModal(); };
+ack.onchange = () => go.disabled = !ack.checked;
+// nav
+const titles = { overview: 'Overview', explore: 'Explore', development: 'Development', review: 'Review & Clean', settings: 'Settings' };
+function show(v) {
+  qa('.view').forEach(s => s.hidden = s.id !== 'v-' + v);
+  qa('.nav').forEach(b => b.toggleAttribute('aria-current', b.dataset.view === v) || b.removeAttribute('aria-current'));
+  qa('.nav').forEach(b => b.dataset.view === v ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+  q1('#title').textContent = titles[v]; if (v === 'explore') inspect('target');
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) { show(b.dataset.view); } });
+qa('#metric button').forEach(b => b.onclick = () => qa('#metric button').forEach(x => x.setAttribute('aria-pressed', x === b)));
+show(initialView());
+if (new URLSearchParams(location.search).has('sheet')) { ack.checked = false; sheet.showModal(); }
+</script>
+</body>
+</html>
