@@ -59,6 +59,18 @@ async function renderApplication(rootContainer: HTMLElement): Promise<void> {
     );
     return;
   }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(location.search).get('fixture') === 'overview'
+  ) {
+    const { OverviewFixture } = await import('./scan/OverviewFixture');
+    createRoot(rootContainer).render(
+      <StrictMode>
+        <OverviewFixture />
+      </StrictMode>,
+    );
+    return;
+  }
   createRoot(rootContainer).render(
     <StrictMode>
       <App />

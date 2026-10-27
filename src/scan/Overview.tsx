@@ -1,18 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { ArrowRight } from '@phosphor-icons/react/ArrowRight';
 import { ChartPieSlice } from '@phosphor-icons/react/ChartPieSlice';
+import { WarningCircle } from '@phosphor-icons/react/WarningCircle';
+import './overview.css';
 import { EmptyState, Notice, ResultTable, Toolbar } from '../shell/primitives';
 import folderIllustration from '../../assets/illustrations/reclaim-folder.webp';
 import { useScanSession } from './useScanSession';
-import {
-  categorize,
-  categoryNames,
-  formatBytes,
-  isCappedBytes,
-  segmentWidth,
-} from './accounting';
+import { categorize, categoryNames, formatBytes } from './accounting';
 import { ScanSettings } from './ScanSettings';
+import { VolumeUsage } from './VolumeUsage';
 import type { ScanSnapshot } from './session';
 import { ReviewButton } from '../cleanup/ReviewButton';
 
@@ -33,6 +30,7 @@ function ScanResults({
   onInvestigate: () => void;
 }): ReactElement {
   const { state, session } = useScanSession();
+  const [activeName, setActiveName] = useState<string | null>(null);
   const categories = useMemo(
     () => categorize(snapshot.findings),
     [snapshot.findings],
@@ -49,6 +47,39 @@ function ScanResults({
       finding.kind === 'file' ||
       (finding.kind === 'directory' && finding.complete),
   );
+  const partial =
+    !snapshot.settled ||
+    progress.status !== 'complete' ||
+    progress.issueCount > 0;
+  const attention: ReactNode[] = [];
+  if (progress.status === 'cancelled')
+    attention.push(
+      'Cancellation preserves measured entries. Unvisited locations remain unknown. Start a fresh scan when ready.',
+    );
+  if (progress.status === 'failed')
+    attention.push(
+      'Native scan failed. Retained measurements are incomplete; review locations and start again.',
+    );
+  if (progress.status === 'partial')
+    attention.push(
+      'Partial coverage: some locations were not fully read. Unvisited descendants are unknown.',
+    );
+  if (snapshot.settled && !readable)
+    attention.push(
+      'No readable results. Review folder access or choose a different location.',
+    );
+  if (
+    snapshot.settled &&
+    readable &&
+    !snapshot.findings.some((finding) => finding.kind === 'file')
+  )
+    attention.push(
+      'No measured files in this scope. Empty directories, exclusions and unreadable entries are distinct coverage outcomes.',
+    );
+  if (progress.issueCount > 0)
+    attention.push(
+      `${progress.issueCount} coverage observations · ${excluded} excluded entries loaded · ${issues.length} access/change/limit issues loaded. Unvisited descendants are unknown.`,
+    );
   return (
     <section
       className="scan-results"
@@ -57,12 +88,15 @@ function ScanResults({
       }
     >
       <div className="results-heading">
-        <h2>
+        <h3
+          className="status-heading"
+          data-status={retained ? 'stale' : progress.status}
+        >
           {retained
             ? 'Previous measurements · stale during refresh'
             : statusLabels[progress.status]}
-        </h2>
-        <span>Generation {progress.generation}</span>
+        </h3>
+        <span className="secondary">Generation {progress.generation}</span>
       </div>
       <p className="secondary">
         Measured{' '}
@@ -70,47 +104,135 @@ function ScanResults({
           progress.finishedAtMs ?? progress.startedAtMs,
         ).toLocaleString()}{' '}
         · {snapshot.scope.roots.length} selected locations ·{' '}
-        {progress.entries.toLocaleString()} observed entries
-      </p>
-      <p>
+        {progress.entries.toLocaleString()} observed entries ·{' '}
         {formatBytes(progress.allocatedBytes)} allocated contribution ·{' '}
         {formatBytes(progress.logicalBytes)} logical size
         {!snapshot.settled ? ' · provisional' : ''}
       </p>
-      {progress.status === 'cancelled' && (
+      {progress.volumes.length === 0 && (
         <Notice>
-          Cancellation preserves measured entries. Unvisited locations remain
-          unknown. Start a fresh scan when ready.
+          Volume measurements unavailable so far; unknown usage is not zero.
         </Notice>
       )}
-      {progress.status === 'failed' && (
-        <Notice>
-          Native scan failed. Retained measurements are incomplete; review
-          locations and start again.
-        </Notice>
-      )}
-      {snapshot.settled && !readable && (
-        <Notice>
-          No readable results. Review folder access or choose a different
-          location.
-        </Notice>
-      )}
-      {snapshot.settled &&
-        readable &&
-        !snapshot.findings.some((finding) => finding.kind === 'file') && (
-          <Notice>
-            No measured files in this scope. Empty directories, exclusions and
-            unreadable entries are distinct coverage outcomes.
-          </Notice>
+      {progress.volumes.map((accounting) => (
+        <VolumeUsage
+          key={accounting.volume.id}
+          accounting={accounting}
+          snapshot={snapshot}
+          partial={partial}
+          activeName={activeName}
+          onActiveChange={setActiveName}
+        />
+      ))}
+      <section className="follow-space" aria-labelledby="follow-space-heading">
+        <h3 id="follow-space-heading">Follow the space</h3>
+        {!snapshot.settled ? (
+          <p>
+            Loading measured categories… Ranking waits for final pages so rows
+            stay stable.
+          </p>
+        ) : (
+          <>
+            <ResultTable caption="Measured file categories · ranked by allocated contribution">
+              <thead>
+                <tr>
+                  <th scope="col">Category</th>
+                  <th scope="col" className="numeric">
+                    Allocated
+                  </th>
+                  <th scope="col" className="numeric">
+                    Logical
+                  </th>
+                  <th scope="col">Investigate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((category) => (
+                  <tr
+                    key={category.name}
+                    data-active={activeName === category.name}
+                    onMouseEnter={() => setActiveName(category.name)}
+                    onMouseLeave={() => setActiveName(null)}
+                    onFocus={() => setActiveName(category.name)}
+                    onBlur={() => setActiveName(null)}
+                  >
+                    <th scope="row">
+                      <span
+                        className={`category-swatch category-${categoryNames.indexOf(category.name)}`}
+                        aria-hidden="true"
+                      />
+                      {category.name}
+                      <span className="secondary category-count">
+                        {category.findingIds.length} unique files
+                      </span>
+                    </th>
+                    <td className="numeric">
+                      {formatBytes(
+                        category.allocatedBytes,
+                        category.allocatedCapped,
+                      )}
+                    </td>
+                    <td className="numeric">
+                      {formatBytes(
+                        category.logicalBytes,
+                        category.logicalCapped,
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        disabled={
+                          category.findingIds.length === 0 ||
+                          retained ||
+                          state.stale
+                        }
+                        onClick={() => {
+                          session.investigate({
+                            generation: progress.generation,
+                            category: category.name,
+                            findingIds: category.findingIds,
+                          });
+                          onInvestigate();
+                        }}
+                        aria-label={`Investigate ${category.name}`}
+                      >
+                        Explore <ArrowRight size={16} aria-hidden="true" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </ResultTable>
+            {categories.some((category) => category.allocatedBytes > 0n) && (
+              <p className="secondary">
+                Start with{' '}
+                {
+                  categories.find((category) => category.allocatedBytes > 0n)
+                    ?.name
+                }
+                : largest measured allocated contribution in this scope. File
+                extensions describe format, not ownership or deletion safety.
+              </p>
+            )}
+          </>
         )}
-      {progress.issueCount > 0 && (
-        <Notice>
-          {progress.issueCount} coverage observations · {excluded} excluded
-          entries loaded · {issues.length} access/change/limit issues loaded.
-          Unvisited descendants are unknown.
-        </Notice>
+      </section>
+      {attention.length > 0 && (
+        <section
+          className="attention-panel"
+          aria-labelledby="attention-heading"
+        >
+          <h3 id="attention-heading">Needs attention</h3>
+          <ul>
+            {attention.map((message, position) => (
+              <li key={position}>
+                <WarningCircle size={20} weight="fill" aria-hidden="true" />
+                <span>{message}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
-      <details>
+      <details className="coverage-details">
         <summary>Scope and access coverage</summary>
         <ul>
           {snapshot.scope.roots.map((root) => (
@@ -133,227 +255,6 @@ function ScanResults({
           <p>Additional issues remain available in shared findings.</p>
         )}
       </details>
-      <h2>Volume usage</h2>
-      {progress.volumes.length === 0 && (
-        <Notice>
-          Volume measurements unavailable so far; unknown usage is not zero.
-        </Notice>
-      )}
-      {progress.volumes.map((accounting) => {
-        const { volume } = accounting;
-        const volumeCategories = snapshot.settled
-          ? categorize(
-              snapshot.findings.filter((finding) =>
-                finding.identity?.startsWith(`${volume.id}:`),
-              ),
-            )
-          : [];
-        const categorizedBytes = volumeCategories.reduce(
-          (total, category) => total + category.allocatedBytes,
-          0n,
-        );
-        const matchingCategories =
-          snapshot.settled &&
-          categorizedBytes === BigInt(accounting.scopeAllocatedBytes);
-        const total = volume.totalBytes;
-        const remainder = accounting.unscannedOrUnexplainedBytes;
-        const cappedAllocation =
-          isCappedBytes(accounting.scopeAllocatedBytes) ||
-          volumeCategories.some((category) => category.allocatedCapped);
-        const cappedRemainder =
-          cappedAllocation || isCappedBytes(volume.usedBytes);
-        const cappedAccounting =
-          cappedRemainder ||
-          [total, volume.freeBytes, remainder].some(isCappedBytes);
-        const consistent =
-          !cappedAccounting &&
-          total !== null &&
-          BigInt(total) > 0n &&
-          volume.freeBytes !== null &&
-          remainder !== null &&
-          BigInt(accounting.scopeAllocatedBytes) +
-            BigInt(remainder) +
-            BigInt(volume.freeBytes) ===
-            BigInt(total);
-        return (
-          <section
-            className="volume-usage"
-            key={volume.id}
-            aria-label={`Volume ${volume.id} usage`}
-          >
-            <div className="results-heading">
-              <h3>Volume {volume.id}</h3>
-              <span>{formatBytes(total)} total</span>
-            </div>
-            {consistent &&
-            total !== null &&
-            remainder !== null &&
-            volume.freeBytes !== null ? (
-              <div className="usage-strip" aria-hidden="true">
-                {matchingCategories ? (
-                  volumeCategories.map((category) => (
-                    <span
-                      key={category.name}
-                      className={`segment-category category-${categoryNames.indexOf(category.name)}`}
-                      style={{
-                        width: segmentWidth(
-                          category.allocatedBytes.toString(),
-                          total,
-                        ),
-                      }}
-                    />
-                  ))
-                ) : (
-                  <span
-                    className="segment-measured"
-                    style={{
-                      width: segmentWidth(
-                        accounting.scopeAllocatedBytes,
-                        total,
-                      ),
-                    }}
-                  />
-                )}
-                <span
-                  className="segment-unknown"
-                  style={{ width: segmentWidth(remainder, total) }}
-                />
-                <span
-                  className="segment-free"
-                  style={{ width: segmentWidth(volume.freeBytes, total) }}
-                />
-              </div>
-            ) : (
-              <p>
-                {cappedAccounting
-                  ? 'Usage segments unavailable: capped accounting cannot reconcile exact volume usage.'
-                  : 'Usage segments unavailable: missing or inconsistent physical accounting.'}
-              </p>
-            )}
-            {matchingCategories && (
-              <p className="secondary">
-                Measured categories:{' '}
-                {volumeCategories
-                  .filter((category) => category.allocatedBytes > 0n)
-                  .map(
-                    (category) =>
-                      `${category.name} ${formatBytes(category.allocatedBytes, category.allocatedCapped)}`,
-                  )
-                  .join(' · ') || 'No allocated file contributions'}
-                .
-              </p>
-            )}
-            <dl className="volume-legend">
-              <div>
-                <dt>Measured allocated</dt>
-                <dd>{formatBytes(accounting.scopeAllocatedBytes)}</dd>
-              </div>
-              <div>
-                <dt>Unscanned / unexplained</dt>
-                <dd>
-                  {cappedRemainder
-                    ? 'Unavailable (capped accounting)'
-                    : formatBytes(remainder)}
-                </dd>
-              </div>
-              <div>
-                <dt>Free blocks</dt>
-                <dd>{formatBytes(volume.freeBytes)}</dd>
-              </div>
-              <div>
-                <dt>Available to you</dt>
-                <dd>{formatBytes(volume.availableBytes)}</dd>
-              </div>
-            </dl>
-            <p className="secondary">
-              Volume sampled{' '}
-              {new Date(volume.measuredAtMs).toLocaleTimeString()}.{' '}
-              {volume.metricIssue &&
-                `Metric issue: ${volume.metricIssue.replaceAll('_', ' ')}.`}
-            </p>
-          </section>
-        );
-      })}
-      <h2>Follow the space</h2>
-      {!snapshot.settled ? (
-        <p>
-          Loading measured categories… Ranking waits for final pages so rows
-          stay stable.
-        </p>
-      ) : (
-        <>
-          <ResultTable caption="Measured file categories · ranked by allocated contribution">
-            <thead>
-              <tr>
-                <th scope="col">Category</th>
-                <th scope="col" className="numeric">
-                  Allocated
-                </th>
-                <th scope="col" className="numeric">
-                  Logical
-                </th>
-                <th scope="col">Investigate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map((category) => (
-                <tr key={category.name}>
-                  <th scope="row">
-                    <span
-                      className={`category-swatch category-${categoryNames.indexOf(category.name)}`}
-                      aria-hidden="true"
-                    />
-                    {category.name}
-                    <span className="secondary category-count">
-                      {category.findingIds.length} unique files
-                    </span>
-                  </th>
-                  <td className="numeric">
-                    {formatBytes(
-                      category.allocatedBytes,
-                      category.allocatedCapped,
-                    )}
-                  </td>
-                  <td className="numeric">
-                    {formatBytes(category.logicalBytes, category.logicalCapped)}
-                  </td>
-                  <td>
-                    <button
-                      disabled={
-                        category.findingIds.length === 0 ||
-                        retained ||
-                        state.stale
-                      }
-                      onClick={() => {
-                        session.investigate({
-                          generation: progress.generation,
-                          category: category.name,
-                          findingIds: category.findingIds,
-                        });
-                        onInvestigate();
-                      }}
-                      aria-label={`Investigate ${category.name}`}
-                    >
-                      Explore <ArrowRight size={16} aria-hidden="true" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </ResultTable>
-          {categories.some((category) => category.allocatedBytes > 0n) && (
-            <p className="secondary">
-              Start with{' '}
-              {
-                categories.find((category) => category.allocatedBytes > 0n)
-                  ?.name
-              }
-              : largest measured allocated contribution in this scope. File
-              extensions describe format, not ownership or deletion safety.
-            </p>
-          )}
-        </>
-      )}
       <Notice>
         Logical size differs from allocated storage. Hard links count once;
         directory aggregates are not added again. APFS clone sharing, snapshots,
@@ -363,7 +264,7 @@ function ScanResults({
       </Notice>
       {snapshot.settled && !retained && (
         <section aria-label="Review scanned locations">
-          <h2>Review scanned locations</h2>
+          <h3>Review scanned locations</h3>
           <p>
             Check cleanup limitations for an exact scanned location. Recognition
             and size do not make its contents removable.
@@ -459,6 +360,18 @@ export function Overview({
           results describe their original scope and time. Refresh deliberately.
         </Notice>
       )}
+      {snapshot && (
+        <header className="overview-heading">
+          <h2>Where did the space go?</h2>
+          <p
+            className={snapshot.settled ? 'visually-hidden' : 'scan-phase'}
+            role="status"
+          >
+            {phase}
+          </p>
+          <p className="secondary">{elapsed}s elapsed</p>
+        </header>
+      )}
       <Toolbar label="Scan controls">
         <button
           className="primary-action"
@@ -491,21 +404,26 @@ export function Overview({
           </button>
         )}
       </Toolbar>
-      <p className="scan-phase" role="status">
-        {phase}
-      </p>
-      {snapshot && (
-        <p className="secondary">
-          {elapsed}s elapsed
-          {running && snapshot.progress.currentLocation
-            ? ` · ${snapshot.progress.currentLocation}`
-            : ''}
+      {!snapshot && (
+        <p className="scan-phase" role="status">
+          {phase}
         </p>
       )}
-      {running && (
-        <p className="secondary">
-          Current root shown above. Total work unknown; no percent estimate.
-        </p>
+      {running && snapshot && (
+        <section className="progress-card" aria-label="Scan progress">
+          <div className="progress-track" aria-hidden="true">
+            <span />
+          </div>
+          <p>
+            {snapshot.progress.currentLocation
+              ? `Reading ${snapshot.progress.currentLocation}`
+              : 'Preparing locations'}
+          </p>
+          <p className="secondary">
+            {snapshot.progress.entries.toLocaleString()} entries observed so
+            far. Total work unknown; no percent estimate.
+          </p>
+        </section>
       )}
       {(!snapshot || editing) && <ScanSettings />}
       {snapshot && (
