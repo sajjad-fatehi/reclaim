@@ -677,17 +677,6 @@ main {
   font-weight: 700;
   margin-top: 0;
 }
-.scan-hero-progress {
-  display: flex;
-  align-items: center;
-  gap: var(--space-small);
-  min-width: 12rem;
-  font-weight: 600;
-  color: var(--accent-text);
-}
-.scan-hero-progress .progress-track {
-  flex: 1;
-}
 .scan-scope-summary {
   display: flex;
   align-items: center;

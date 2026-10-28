@@ -393,21 +393,13 @@ export function Overview({
   const scanHero = (
     <section className="scan-hero" aria-label="Scan controls">
       {running ? (
-        <>
-          <div className="scan-hero-progress" role="status">
-            <span className="progress-track" aria-hidden="true">
-              <span />
-            </span>
-            <span>{state.cancelling ? 'Cancelling…' : 'Scanning…'}</span>
-          </div>
-          <button
-            className="scan-hero-button"
-            onClick={() => void session.cancel()}
-            disabled={state.cancelling}
-          >
-            {state.cancelling ? 'Cancelling…' : 'Cancel scan'}
-          </button>
-        </>
+        <button
+          className="scan-hero-button"
+          onClick={() => void session.cancel()}
+          disabled={state.cancelling}
+        >
+          {state.cancelling ? 'Cancelling…' : 'Cancel scan'}
+        </button>
       ) : (
         <button
           className="primary-action scan-hero-button"

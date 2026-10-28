@@ -454,7 +454,9 @@ test('hero scan button label follows state, Cancel works, Edit reveals settings'
   fireEvent.click(screen.getByRole('button', { name: 'Start scan' }));
   await act(async () => vi.advanceTimersByTimeAsync(10));
   expect(screen.queryByRole('button', { name: 'Start scan' })).toBeNull();
-  expect(screen.getByText('Scanning…').textContent).toMatch(/Scanning/);
+  expect(screen.getByText('Measuring metadata').textContent).toMatch(
+    /Measuring/,
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Cancel scan' }));
   await act(async () => vi.advanceTimersByTimeAsync(640));
   expect(cancel).toHaveBeenCalled();
