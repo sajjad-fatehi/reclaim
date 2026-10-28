@@ -930,7 +930,7 @@ pub(crate) mod tests {
         let plan_id = plan_id.unwrap();
         let result = cleanup
             .execute_with(
-                &ScanService::default(),
+                &ScanService::exhaustive(),
                 &directory,
                 &plan_id,
                 true,
@@ -948,7 +948,7 @@ pub(crate) mod tests {
         );
         assert!(cleanup
             .execute_with(
-                &ScanService::default(),
+                &ScanService::exhaustive(),
                 &directory,
                 &plan_id,
                 true,

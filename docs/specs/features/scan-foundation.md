@@ -40,9 +40,10 @@ Before implementation, the selected invariants are:
   Retain native lossless paths and device/inode identity; UI receives bounded lossy
   display strings and session-local finding IDs. Root replacement cannot redirect
   an already-open grant. Descendants are opened relative to their parent handle.
-- Serial worker, at most 16 roots, depth 128, 100,000 retained entries, 200 entries
-  per response, 1,024 display characters per string. Stop with partial coverage on
-  resource limits. No per-file events; clients poll, with native throttling.
+- Serial worker, at most 16 roots, depth 128, 200 entries per response, 1,024
+  display characters per string. The walk measures the entire scope; only a bounded
+  set of nodes is retained (see [Aggregate walker](#aggregate-walker-and-bounded-retention)).
+  No per-file events; clients poll, with native throttling.
 - Logical/allocated measurements count each device/inode once across all roots.
   A hard-link alias contributes zero additional bytes and points to its first finding.
   Directory totals aggregate child contributions, not filesystem directory blocks.
@@ -144,7 +145,7 @@ failures rather than assuming every rejection is a domain DTO. Errors/logs do no
 include private paths, file contents or raw OS error text.
 
 Issues: `permission_denied`, `vanished`, `io`, `changed`, `mount_boundary`,
-`depth_limit`, `entry_limit`, `cancelled`, `worker_failed`. Recoverable entry issues
+`depth_limit`, `cancelled`, `worker_failed` (`entry_limit` was removed; see below). Recoverable entry issues
 produce terminal `partial`; cancellation produces `cancelled`; a worker panic
 retains observations and produces `failed`. Invalid requests leave the session
 unchanged. A failed start caused by an unavailable/replaced grant requires selecting
@@ -195,8 +196,8 @@ is made from scan results.
 ## Resource bounds
 
 - One scan worker, serial traversal; no per-file tasks and no file-content buffers.
-- 32 retained native candidate handles, 16 selected roots, 100,000 retained findings,
-  depth 128, root paths up to 4,096 native bytes; one retained terminal session.
+- 32 retained native candidate handles, 16 selected roots, a retained-node budget
+  (default 250,000; see below), depth 128, root paths up to 4,096 native bytes; one retained terminal session.
 - Directory traversal retains at most 128 directory handles plus 128 directory
   iterators, in addition to candidates/root clones and short-lived validation handles.
   Limits can still meet a lower OS descriptor limit; that becomes explicit partial I/O
@@ -206,7 +207,7 @@ is made from scan results.
   contain at most 1,024 Unicode scalar values; page count is capped at 200.
   Result memory scales with retained findings, never unlimited tree size. Byte-level
   RSS/latency SLOs are not claimed; allocator/OS overhead varies.
-- Entry/depth limits produce explicit partial results; no hidden continued traversal.
+- The depth limit produces an explicit partial result; there is no entry limit.
   Status reads copy constant-size progress plus at most 16 volume summaries. Page
   reads copy at most 200 DTOs. Oversized IPC envelopes may still be deserialized by
   Tauri before command validation; there is no custom unrestricted message channel.
@@ -231,7 +232,7 @@ Node/npm setup. Evidence covers this producer, not future consumer UI or cleanup
 | Multiple scopes on one volume | Disjoint-root fixture with a cross-root hard link counts seven logical bytes once, one volume summary and matching checked unexplained remainder |
 | Symlink escape/cycles and root replacement | Out-of-scope fixture sentinel remains unchanged; no symlink descent; open root stays on original object and native replaced-grant starts are rejected |
 | Permission/vanished/change/mount decisions | Real denied directory produces partial root coverage; vanished entry and pre-change directory metadata produce typed issues; mount/device branch uses a simulated differing device, without mounting or privileges |
-| Resource/cancel coverage | A 500-file fixture stops at an injected 20-record limit; a nested fixture stops at injected depth three; same implementation uses production caps of 100,000/128; no giant-tree RSS benchmark claimed |
+| Resource/cancel coverage | Superseded by the aggregate walker: no entry cap; a nested fixture stops at injected depth three (production depth 128); see the aggregate walker section for retention evidence |
 | Lossless names and unknown volume metrics | Synthetic non-UTF-8 record reconstructs native name; display controls/truncation tested; injected metric denial returns null measurements |
 | Native transport | Tauri dispatcher uses generated production ACL, checks malformed/unknown scopes, byte-string serialization, wrong-window denial, paging, rate limits, busy/stale requests and worker failure |
 | Real native IPC | `cargo run -p reclaim-desktop --example scan_smoke --features tauri/custom-protocol --locked` exits 0 and reports `PASS: smallBytes=5&liveEntries=51&cancelledEntries=109&page=109&stale=rejected` |
@@ -332,3 +333,56 @@ the walker, not the recognition phase's explicitly documented content reads.
 contract is unchanged. `access_status` and `access_open_settings` are separate
 argument-free commands under the `access-guidance` permission, authorized for the `main`
 window only, and do not start or influence scans.
+
+## Aggregate walker and bounded retention
+
+Design: Spike note `211d9247` (project notes) (Q2-Q4, T1). Supersedes the
+100,000-entry cap: `MAX_ENTRIES` and `Issue::EntryLimit` no longer exist.
+
+Behavior:
+
+- The walk is a streaming post-order traversal of the **entire** selected scope.
+  Totals (`Progress.logicalBytes/allocatedBytes`, per-volume scope bytes, categories,
+  directory aggregates) never depend on retention. Retention decides only which nodes
+  stay as `ScanData.records` (the existing record/finding transport, unchanged).
+- Retention is decided when a directory finishes. `RetentionPolicy { depth,
+  threshold, top_k, node_budget, pin_predicate }`; defaults: depth 2, threshold
+  1 MiB allocated, top 5 files per directory, budget 250,000 nodes, pin predicate
+  = recognition `inside_generated` directory names (`node_modules .venv venv target
+  .git .next .nuxt .svelte-kit .turbo`, plus `.worktrees`, `DerivedData`) and the
+  recognition marker-file names. Retained: roots; directories within `depth` of a
+  root; directories with allocated >= threshold; pinned names; issue entries; the
+  top-k files >= threshold in a directory; and, for closure, every ancestor of a
+  retained node. Pins and issue entries share a cap of 50,000; beyond it they fold.
+- Anything not retained is **folded** into its nearest retained ancestor. Each
+  retained directory carries `foldedItems`, `foldedLogicalBytes`,
+  `foldedAllocatedBytes`, `descendantItems` and `detail` (`full` when nothing was
+  folded, else `summarized`). Invariant: directory total = sum of retained child
+  totals + folded bytes; every retained node's ancestors are retained.
+- If retained nodes exceed the budget, the threshold is raised x4 and unpinned
+  retained nodes below it without retained descendants are folded, repeatedly.
+  `Progress.retention { nodes, thresholdBytes, budgetReached }` reports this. It is
+  information, not a coverage gap: status stays `complete` when nothing else failed.
+- `Partial` now means only denied, vanished, changed, mount boundary, depth limit,
+  excluded, or other I/O issues; `Cancelled` and `Failed` are unchanged.
+- Hard links: a file identity set exists only for `st_nlink > 1`, capped at
+  2,000,000 identities. Beyond the cap later multi-link files count as unique (an
+  upper bound) and `Progress.sharingUntracked` is true. Directory identities and
+  the ancestor stack still suppress aliases and cycles. A retained alias file has
+  `aliasOf` = its `dev:ino` identity (the first-seen link need not be retained).
+- Categories (`Documents`, `Media`, `Archives`, `Other files`; extension table moved
+  from the frontend) accumulate per volume in `Progress.volumes[].categories`
+  (`name`, `logicalBytes`, `allocatedBytes`, `count`) over first-seen regular files.
+  Their allocated sum equals `scopeAllocatedBytes`. `ScanData.top_files` keeps the
+  top 50 files per category (native path retained, not a record).
+- Records appear when the walk finishes (not incrementally); progress counters and
+  categories update at most every 4,096 entries.
+- Recognition runs on the retained records; directory `foldedLogical/AllocatedBytes`
+  are attributed as if they were files of that directory. Marker-file coverage
+  beyond the pin list is owned by the recognition follow-up.
+- Cleanup stays fail-closed: its fresh subtree scan must be exhaustive and must
+  match the originally retained subtree exactly; any `summarized` directory under
+  the target makes it ineligible until subtree fingerprints replace this check.
+
+Memory is bounded by the retained-node budget, pin cap, directory identity set (16 B
+per directory) and file identity cap (about 36 MB), not by tree size.

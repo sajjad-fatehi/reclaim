@@ -125,6 +125,17 @@ struct Authority {
 #[derive(Default)]
 pub struct ScanService {
     authority: Mutex<Authority>,
+    retention: scan::RetentionPolicy,
+}
+
+impl ScanService {
+    /// Retains every entry up to a large budget; for fixtures and tests that inspect small trees.
+    pub fn exhaustive() -> Self {
+        Self {
+            authority: Mutex::default(),
+            retention: scan::RetentionPolicy::exhaustive(scan::RETENTION_NODE_BUDGET),
+        }
+    }
 }
 
 fn token() -> String {
@@ -341,11 +352,12 @@ impl ScanService {
             last_read: None,
         });
         let failure_data = data.clone();
+        let retention = self.retention;
         let spawned = std::thread::Builder::new()
             .name("reclaim-scan".into())
             .spawn(move || {
                 if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    scan::scan_excluding(roots, exclusions, data, cancel)
+                    scan::scan_with_policy(roots, exclusions, retention, data, cancel)
                 }))
                 .is_err()
                 {
@@ -368,7 +380,7 @@ impl ScanService {
     }
 
     pub fn page(&self, generation: u32, offset: usize, limit: usize) -> BoundaryResult<Page> {
-        if limit == 0 || limit > scan::MAX_PAGE || offset > scan::MAX_ENTRIES {
+        if limit == 0 || limit > scan::MAX_PAGE {
             return Err(ErrorCode::InvalidRequest.into());
         }
         let mut authority = lock(&self.authority);
@@ -640,7 +652,7 @@ mod tests {
     fn fixture() -> (tempfile::TempDir, Arc<ScanService>, Scope) {
         let temporary = tempfile::tempdir().unwrap();
         fs::write(temporary.path().join("fixture"), b"12345").unwrap();
-        let service = Arc::new(ScanService::default());
+        let service = Arc::new(ScanService::exhaustive());
         let location = service.register_native_location(temporary.path()).unwrap();
         let scope = lock(&service.authority).register(&[location.id]).unwrap();
         (temporary, service, scope)
@@ -803,7 +815,7 @@ mod tests {
         let selected = temporary.path().join("selected");
         fs::create_dir(&selected).unwrap();
         fs::write(selected.join("original"), b"old").unwrap();
-        let service = ScanService::default();
+        let service = ScanService::exhaustive();
         let original = service.register_native_location(&selected).unwrap();
         let old_scope = lock(&service.authority)
             .register(std::slice::from_ref(&original.id))
@@ -883,7 +895,7 @@ mod tests {
     #[test]
     fn candidate_limit_allows_reselection_but_rejects_new_locations() {
         let temporary = tempfile::tempdir().unwrap();
-        let service = ScanService::default();
+        let service = ScanService::exhaustive();
         let mut locations = Vec::new();
         for index in 0..MAX_CANDIDATES {
             let path = temporary.path().join(format!("candidate-{index}"));
@@ -1178,7 +1190,7 @@ pub(crate) mod cleanup_review_tests {
             br#"{"rustc_fingerprint":123}"#,
         )
         .unwrap();
-        let service = Arc::new(ScanService::default());
+        let service = Arc::new(ScanService::exhaustive());
         let location = service.register_native_location(temporary.path()).unwrap();
         let scope = lock(&service.authority).register(&[location.id]).unwrap();
         let generation = service.start(&scope.id).unwrap().generation;
@@ -1202,6 +1214,44 @@ pub(crate) mod cleanup_review_tests {
             generation,
             finding_id,
         }
+    }
+
+    #[test]
+    fn cleanup_target_is_ineligible_when_retention_folded_part_of_the_subtree() {
+        let temporary = tempfile::tempdir().unwrap();
+        fs::create_dir(temporary.path().join("node_modules")).unwrap();
+        fs::write(
+            temporary.path().join("package.json"),
+            br#"{"name":"SYNTHETIC"}"#,
+        )
+        .unwrap();
+        fs::write(temporary.path().join("node_modules/dependency.js"), b"x").unwrap();
+        fs::write(
+            temporary.path().join("node_modules/.package-lock.json"),
+            br#"{"lockfileVersion":3,"packages":{}}"#,
+        )
+        .unwrap();
+        let service = Arc::new(ScanService::default());
+        let location = service.register_native_location(temporary.path()).unwrap();
+        let scope = lock(&service.authority).register(&[location.id]).unwrap();
+        let generation = service.start(&scope.id).unwrap().generation;
+        super::tests::terminal(&service);
+        let finding_id = service
+            .with_terminal_scan(generation, |data| {
+                let record = data
+                    .records
+                    .iter()
+                    .find(|record| record.name == "node_modules")
+                    .unwrap();
+                assert_eq!(record.finding.detail, scan::Detail::Summarized);
+                record.finding.id.clone()
+            })
+            .unwrap();
+        let error = service
+            .cleanup_target(generation, &finding_id)
+            .err()
+            .expect("folded subtree is not eligible");
+        assert_eq!(error.code, ErrorCode::Unavailable);
     }
 
     #[test]

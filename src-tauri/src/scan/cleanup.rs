@@ -129,9 +129,26 @@ impl ScanService {
         if !protected.is_empty() {
             return Err(ErrorCode::InvalidRequest.into());
         }
+        let mut expected = std::collections::HashMap::new();
+        for (position, original) in data.records.iter().enumerate() {
+            let original_path = data.path(position).ok_or(ErrorCode::InvalidRequest)?;
+            if !original_path.starts_with(&path) {
+                continue;
+            }
+            // Folded descendants were never compared; without a full retained subtree the
+            // comparison below cannot prove the target unchanged, so it stays ineligible.
+            if original.finding.kind == scan::Kind::Directory
+                && original.finding.detail != scan::Detail::Full
+            {
+                return Err(ErrorCode::Unavailable.into());
+            }
+            expected.insert(original_path, original);
+        }
         let fresh = Arc::new(Mutex::new(ScanData::new(generation)));
-        scan::scan(
+        scan::scan_with_policy(
             vec![Root::open(&path)?],
+            Vec::new(),
+            scan::RetentionPolicy::exhaustive(expected.len().saturating_add(1)),
             fresh.clone(),
             Arc::new(AtomicBool::new(false)),
         );
@@ -140,13 +157,6 @@ impl ScanService {
             return Err(ErrorCode::Unavailable.into());
         }
         let mut stamps = Vec::new();
-        let mut expected = std::collections::HashMap::new();
-        for (position, original) in data.records.iter().enumerate() {
-            let original_path = data.path(position).ok_or(ErrorCode::InvalidRequest)?;
-            if original_path.starts_with(&path) {
-                expected.insert(original_path, original);
-            }
-        }
         if fresh.records.len() != expected.len() {
             return Err(ErrorCode::Unavailable.into());
         }
@@ -203,11 +213,17 @@ impl ScanService {
             let metadata = data
                 .path(super::explore::resolve(&data, metadata)?)
                 .ok_or(ErrorCode::InvalidRequest)?;
-            for (position, _) in data.records.iter().enumerate() {
+            for (position, record) in data.records.iter().enumerate() {
                 let path = data.path(position).ok_or(ErrorCode::InvalidRequest)?;
-                if path.starts_with(&metadata) {
-                    stamps.push(observe(path, false)?);
+                if !path.starts_with(&metadata) {
+                    continue;
                 }
+                if record.finding.kind == scan::Kind::Directory
+                    && record.finding.detail != scan::Detail::Full
+                {
+                    return Err(ErrorCode::Unavailable.into());
+                }
+                stamps.push(observe(path, false)?);
             }
         }
         stamps.sort_by(|left, right| left.path.cmp(&right.path));

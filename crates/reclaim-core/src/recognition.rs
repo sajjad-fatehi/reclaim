@@ -542,26 +542,32 @@ impl Recognizer<'_> {
                 break;
             }
             let record = &self.records[index];
-            if record.finding.kind != Kind::File || record.finding.alias_of.is_some() {
+            let (logical, allocated) = match record.finding.kind {
+                Kind::File if record.finding.alias_of.is_none() => {
+                    (record.finding.logical_bytes, record.finding.allocated_bytes)
+                }
+                Kind::Directory => (
+                    record.finding.folded_logical_bytes,
+                    record.finding.folded_allocated_bytes,
+                ),
+                _ => continue,
+            };
+            if logical == 0 && allocated == 0 {
                 continue;
             }
             let mut current = Some(index);
             while let Some(index) = current {
                 if let Some(artifact) = self.artifacts.get(&index) {
-                    exclusive[*artifact].0 = exclusive[*artifact]
-                        .0
-                        .saturating_add(record.finding.logical_bytes);
-                    exclusive[*artifact].1 = exclusive[*artifact]
-                        .1
-                        .saturating_add(record.finding.allocated_bytes);
+                    exclusive[*artifact].0 = exclusive[*artifact].0.saturating_add(logical);
+                    exclusive[*artifact].1 = exclusive[*artifact].1.saturating_add(allocated);
                     break;
                 }
                 current = self.records[index].parent;
             }
             if let Some(project) = self.nearest_project(index) {
                 let totals = owned.entry(project).or_default();
-                totals.0 = totals.0.saturating_add(record.finding.logical_bytes);
-                totals.1 = totals.1.saturating_add(record.finding.allocated_bytes);
+                totals.0 = totals.0.saturating_add(logical);
+                totals.1 = totals.1.saturating_add(allocated);
             }
         }
         for (index, artifact) in &self.artifacts {

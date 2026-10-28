@@ -336,7 +336,7 @@ mod tests {
         context.config_mut().app.windows.clear();
         let app = mock_builder()
             .manage(Arc::new(CleanupService::default()))
-            .manage(Arc::new(ScanService::default()))
+            .manage(Arc::new(ScanService::exhaustive()))
             .manage(Arc::new(DockerService::default()))
             .invoke_handler(tauri::generate_handler![
                 cleanup_review,

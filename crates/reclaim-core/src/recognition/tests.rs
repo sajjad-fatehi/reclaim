@@ -1,5 +1,5 @@
 use super::*;
-use crate::scan::{scan, ScanData};
+use crate::scan::{scan_with_policy, RetentionPolicy, ScanData};
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::process::Command;
@@ -14,8 +14,10 @@ fn write(root: &Path, relative: &str, content: &str) {
 
 fn measure(root: &Path) -> ScanData {
     let data = Arc::new(Mutex::new(ScanData::new(7)));
-    scan(
+    scan_with_policy(
         vec![Root::open(root).unwrap()],
+        Vec::new(),
+        RetentionPolicy::exhaustive(usize::MAX),
         data.clone(),
         Arc::new(AtomicBool::new(false)),
     );
@@ -690,6 +692,11 @@ fn account_caps_exclusive_and_owned_byte_totals() {
                 alias_of: None,
                 complete: true,
                 issue: None,
+                folded_items: 0,
+                folded_logical_bytes: 0,
+                folded_allocated_bytes: 0,
+                descendant_items: 0,
+                detail: crate::scan::Detail::Full,
             },
         }
     }
