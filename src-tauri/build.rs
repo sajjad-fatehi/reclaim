@@ -1,6 +1,8 @@
 fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
+            "access_status",
+            "access_open_settings",
             "preferences_load",
             "preferences_save",
             "scan_locations",

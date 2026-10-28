@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use reclaim_desktop::{cleanup, docker, preferences, scan};
+use reclaim_desktop::{access, cleanup, docker, preferences, scan};
 
 fn main() {
     tauri::Builder::default()
@@ -10,6 +10,8 @@ fn main() {
         .manage(std::sync::Arc::new(docker::DockerService::default()))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            access::access_status,
+            access::access_open_settings,
             preferences::preferences_load,
             preferences::preferences_save,
             scan::scan_locations,

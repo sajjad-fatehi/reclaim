@@ -1,25 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { ArrowRight } from '@phosphor-icons/react/ArrowRight';
 import { ChartPieSlice } from '@phosphor-icons/react/ChartPieSlice';
+import { CaretRight } from '@phosphor-icons/react/CaretRight';
+import { WarningCircle } from '@phosphor-icons/react/WarningCircle';
+import './overview.css';
 import { EmptyState, Notice, ResultTable, Toolbar } from '../shell/primitives';
 import folderIllustration from '../../assets/illustrations/reclaim-folder.webp';
 import { useScanSession } from './useScanSession';
-import {
-  categorize,
-  categoryNames,
-  formatBytes,
-  isCappedBytes,
-  segmentWidth,
-} from './accounting';
+import { categorize, categoryNames, formatBytes } from './accounting';
 import { ScanSettings } from './ScanSettings';
+import { VolumeUsage } from './VolumeUsage';
 import type { ScanSnapshot } from './session';
 import { ReviewButton } from '../cleanup/ReviewButton';
+import { AccessGuidance, OpenSettingsButton } from '../access/AccessGuidance';
+import { useAccess } from '../access/useAccess';
 
 const statusLabels = {
   running: 'Scanning',
   complete: 'Scan complete',
-  partial: 'Partial coverage',
+  partial: 'Finished with gaps',
   cancelled: 'Scan cancelled',
   failed: 'Scan failed',
 };
@@ -33,6 +33,7 @@ function ScanResults({
   onInvestigate: () => void;
 }): ReactElement {
   const { state, session } = useScanSession();
+  const [activeName, setActiveName] = useState<string | null>(null);
   const categories = useMemo(
     () => categorize(snapshot.findings),
     [snapshot.findings],
@@ -44,316 +45,279 @@ function ScanResults({
   const issues = snapshot.findings.filter(
     (finding) => finding.issue !== null && finding.issue !== 'excluded',
   );
+  const denied = issues.filter(
+    (finding) => finding.issue === 'permission_denied',
+  );
+  const access = useAccess();
   const readable = snapshot.findings.some(
     (finding) =>
       finding.kind === 'file' ||
       (finding.kind === 'directory' && finding.complete),
   );
+  const partial =
+    !snapshot.settled ||
+    progress.status !== 'complete' ||
+    progress.issueCount > 0;
+  const attention: ReactNode[] = [];
+  if (progress.status === 'cancelled')
+    attention.push(
+      'Cancellation preserves measured entries. Unvisited locations remain unknown. Start a fresh scan when ready.',
+    );
+  if (progress.status === 'failed')
+    attention.push(
+      'Native scan failed. Retained measurements are incomplete; review locations and start again.',
+    );
+  if (progress.status === 'partial')
+    attention.push(
+      'Some locations were not fully read. Unvisited descendants are unknown.',
+    );
+  if (snapshot.settled && !readable)
+    attention.push(
+      'No readable results. Review folder access or choose a different location.',
+    );
+  if (
+    snapshot.settled &&
+    readable &&
+    !snapshot.findings.some((finding) => finding.kind === 'file')
+  )
+    attention.push(
+      'No measured files in this scope. Empty directories, exclusions and unreadable entries are distinct coverage outcomes.',
+    );
+  if (progress.issueCount > 0)
+    attention.push(
+      <>
+        <dl className="attention-stats">
+          <div>
+            <dt>Coverage observations</dt>
+            <dd>{progress.issueCount}</dd>
+          </div>
+          <div>
+            <dt>Excluded entries loaded</dt>
+            <dd>{excluded}</dd>
+          </div>
+          <div>
+            <dt>Access, change or limit issues loaded</dt>
+            <dd>{issues.length}</dd>
+          </div>
+        </dl>
+        {progress.status === 'complete' && (
+          <span>Unvisited descendants are unknown.</span>
+        )}
+      </>,
+    );
   return (
     <section
       className="scan-results"
+      data-volumes={progress.volumes.length}
       aria-label={
         retained ? 'Retained previous measurements' : 'Measured scan results'
       }
     >
       <div className="results-heading">
-        <h2>
+        <h3
+          className="status-heading"
+          data-status={retained ? 'stale' : progress.status}
+        >
           {retained
             ? 'Previous measurements · stale during refresh'
             : statusLabels[progress.status]}
-        </h2>
-        <span>Generation {progress.generation}</span>
+        </h3>
+        <span className="secondary">Generation {progress.generation}</span>
       </div>
-      <p className="secondary">
+      <p className="secondary results-meta">
         Measured{' '}
         {new Date(
           progress.finishedAtMs ?? progress.startedAtMs,
         ).toLocaleString()}{' '}
         · {snapshot.scope.roots.length} selected locations ·{' '}
-        {progress.entries.toLocaleString()} observed entries
-      </p>
-      <p>
+        {progress.entries.toLocaleString()} observed entries ·{' '}
         {formatBytes(progress.allocatedBytes)} allocated contribution ·{' '}
         {formatBytes(progress.logicalBytes)} logical size
         {!snapshot.settled ? ' · provisional' : ''}
       </p>
-      {progress.status === 'cancelled' && (
-        <Notice>
-          Cancellation preserves measured entries. Unvisited locations remain
-          unknown. Start a fresh scan when ready.
-        </Notice>
-      )}
-      {progress.status === 'failed' && (
-        <Notice>
-          Native scan failed. Retained measurements are incomplete; review
-          locations and start again.
-        </Notice>
-      )}
-      {snapshot.settled && !readable && (
-        <Notice>
-          No readable results. Review folder access or choose a different
-          location.
-        </Notice>
-      )}
-      {snapshot.settled &&
-        readable &&
-        !snapshot.findings.some((finding) => finding.kind === 'file') && (
-          <Notice>
-            No measured files in this scope. Empty directories, exclusions and
-            unreadable entries are distinct coverage outcomes.
-          </Notice>
-        )}
-      {progress.issueCount > 0 && (
-        <Notice>
-          {progress.issueCount} coverage observations · {excluded} excluded
-          entries loaded · {issues.length} access/change/limit issues loaded.
-          Unvisited descendants are unknown.
-        </Notice>
-      )}
-      <details>
-        <summary>Scope and access coverage</summary>
-        <ul>
-          {snapshot.scope.roots.map((root) => (
-            <li className="path-text" key={root.id}>
-              {root.displayPath}
-            </li>
-          ))}
-        </ul>
-        <p>
-          {snapshot.scope.exclusions.length} exclusion rules frozen at start. No
-          symlink descent; mount boundaries and unreadable entries reduce
-          coverage.
-        </p>
-        {issues.slice(0, 40).map((finding) => (
-          <p className="path-text" key={finding.id}>
-            {finding.displayName}: {finding.issue?.replaceAll('_', ' ')}
-          </p>
-        ))}
-        {issues.length > 40 && (
-          <p>Additional issues remain available in shared findings.</p>
-        )}
-      </details>
-      <h2>Volume usage</h2>
       {progress.volumes.length === 0 && (
         <Notice>
           Volume measurements unavailable so far; unknown usage is not zero.
         </Notice>
       )}
-      {progress.volumes.map((accounting) => {
-        const { volume } = accounting;
-        const volumeCategories = snapshot.settled
-          ? categorize(
-              snapshot.findings.filter((finding) =>
-                finding.identity?.startsWith(`${volume.id}:`),
-              ),
-            )
-          : [];
-        const categorizedBytes = volumeCategories.reduce(
-          (total, category) => total + category.allocatedBytes,
-          0n,
-        );
-        const matchingCategories =
-          snapshot.settled &&
-          categorizedBytes === BigInt(accounting.scopeAllocatedBytes);
-        const total = volume.totalBytes;
-        const remainder = accounting.unscannedOrUnexplainedBytes;
-        const cappedAllocation =
-          isCappedBytes(accounting.scopeAllocatedBytes) ||
-          volumeCategories.some((category) => category.allocatedCapped);
-        const cappedRemainder =
-          cappedAllocation || isCappedBytes(volume.usedBytes);
-        const cappedAccounting =
-          cappedRemainder ||
-          [total, volume.freeBytes, remainder].some(isCappedBytes);
-        const consistent =
-          !cappedAccounting &&
-          total !== null &&
-          BigInt(total) > 0n &&
-          volume.freeBytes !== null &&
-          remainder !== null &&
-          BigInt(accounting.scopeAllocatedBytes) +
-            BigInt(remainder) +
-            BigInt(volume.freeBytes) ===
-            BigInt(total);
-        return (
-          <section
-            className="volume-usage"
-            key={volume.id}
-            aria-label={`Volume ${volume.id} usage`}
-          >
-            <div className="results-heading">
-              <h3>Volume {volume.id}</h3>
-              <span>{formatBytes(total)} total</span>
-            </div>
-            {consistent &&
-            total !== null &&
-            remainder !== null &&
-            volume.freeBytes !== null ? (
-              <div className="usage-strip" aria-hidden="true">
-                {matchingCategories ? (
-                  volumeCategories.map((category) => (
-                    <span
-                      key={category.name}
-                      className={`segment-category category-${categoryNames.indexOf(category.name)}`}
-                      style={{
-                        width: segmentWidth(
-                          category.allocatedBytes.toString(),
-                          total,
-                        ),
-                      }}
-                    />
-                  ))
-                ) : (
-                  <span
-                    className="segment-measured"
-                    style={{
-                      width: segmentWidth(
-                        accounting.scopeAllocatedBytes,
-                        total,
-                      ),
-                    }}
-                  />
-                )}
-                <span
-                  className="segment-unknown"
-                  style={{ width: segmentWidth(remainder, total) }}
-                />
-                <span
-                  className="segment-free"
-                  style={{ width: segmentWidth(volume.freeBytes, total) }}
-                />
-              </div>
-            ) : (
-              <p>
-                {cappedAccounting
-                  ? 'Usage segments unavailable: capped accounting cannot reconcile exact volume usage.'
-                  : 'Usage segments unavailable: missing or inconsistent physical accounting.'}
-              </p>
-            )}
-            {matchingCategories && (
-              <p className="secondary">
-                Measured categories:{' '}
-                {volumeCategories
-                  .filter((category) => category.allocatedBytes > 0n)
-                  .map(
-                    (category) =>
-                      `${category.name} ${formatBytes(category.allocatedBytes, category.allocatedCapped)}`,
-                  )
-                  .join(' · ') || 'No allocated file contributions'}
-                .
-              </p>
-            )}
-            <dl className="volume-legend">
-              <div>
-                <dt>Measured allocated</dt>
-                <dd>{formatBytes(accounting.scopeAllocatedBytes)}</dd>
-              </div>
-              <div>
-                <dt>Unscanned / unexplained</dt>
-                <dd>
-                  {cappedRemainder
-                    ? 'Unavailable (capped accounting)'
-                    : formatBytes(remainder)}
-                </dd>
-              </div>
-              <div>
-                <dt>Free blocks</dt>
-                <dd>{formatBytes(volume.freeBytes)}</dd>
-              </div>
-              <div>
-                <dt>Available to you</dt>
-                <dd>{formatBytes(volume.availableBytes)}</dd>
-              </div>
-            </dl>
-            <p className="secondary">
-              Volume sampled{' '}
-              {new Date(volume.measuredAtMs).toLocaleTimeString()}.{' '}
-              {volume.metricIssue &&
-                `Metric issue: ${volume.metricIssue.replaceAll('_', ' ')}.`}
-            </p>
-          </section>
-        );
-      })}
-      <h2>Follow the space</h2>
-      {!snapshot.settled ? (
-        <p>
-          Loading measured categories… Ranking waits for final pages so rows
-          stay stable.
-        </p>
-      ) : (
-        <>
-          <ResultTable caption="Measured file categories · ranked by allocated contribution">
-            <thead>
-              <tr>
-                <th scope="col">Category</th>
-                <th scope="col" className="numeric">
-                  Allocated
-                </th>
-                <th scope="col" className="numeric">
-                  Logical
-                </th>
-                <th scope="col">Investigate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map((category) => (
-                <tr key={category.name}>
-                  <th scope="row">
-                    <span
-                      className={`category-swatch category-${categoryNames.indexOf(category.name)}`}
-                      aria-hidden="true"
-                    />
-                    {category.name}
-                    <span className="secondary category-count">
-                      {category.findingIds.length} unique files
-                    </span>
+      {progress.volumes.map((accounting) => (
+        <VolumeUsage
+          key={accounting.volume.id}
+          accounting={accounting}
+          snapshot={snapshot}
+          partial={partial}
+          activeName={activeName}
+          onActiveChange={setActiveName}
+        />
+      ))}
+      <section className="follow-space" aria-labelledby="follow-space-heading">
+        <h3 id="follow-space-heading">Follow the space</h3>
+        {!snapshot.settled ? (
+          <div className="rows-skeleton" role="status">
+            <span className="visually-hidden">
+              Loading measured categories… Ranking waits for final pages so rows
+              stay stable.
+            </span>
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
+          </div>
+        ) : (
+          <>
+            <ResultTable caption="Measured file categories · ranked by allocated contribution">
+              <thead>
+                <tr>
+                  <th scope="col">Category</th>
+                  <th scope="col" className="numeric">
+                    Allocated
                   </th>
-                  <td className="numeric">
-                    {formatBytes(
-                      category.allocatedBytes,
-                      category.allocatedCapped,
-                    )}
-                  </td>
-                  <td className="numeric">
-                    {formatBytes(category.logicalBytes, category.logicalCapped)}
-                  </td>
-                  <td>
-                    <button
-                      disabled={
-                        category.findingIds.length === 0 ||
-                        retained ||
-                        state.stale
-                      }
-                      onClick={() => {
-                        session.investigate({
-                          generation: progress.generation,
-                          category: category.name,
-                          findingIds: category.findingIds,
-                        });
-                        onInvestigate();
-                      }}
-                      aria-label={`Investigate ${category.name}`}
-                    >
-                      Explore <ArrowRight size={16} aria-hidden="true" />
-                    </button>
-                  </td>
+                  <th scope="col" className="numeric">
+                    Logical
+                  </th>
+                  <th scope="col">Investigate</th>
                 </tr>
-              ))}
-            </tbody>
-          </ResultTable>
-          {categories.some((category) => category.allocatedBytes > 0n) && (
-            <p className="secondary">
-              Start with{' '}
-              {
-                categories.find((category) => category.allocatedBytes > 0n)
-                  ?.name
-              }
-              : largest measured allocated contribution in this scope. File
-              extensions describe format, not ownership or deletion safety.
-            </p>
-          )}
-        </>
+              </thead>
+              <tbody>
+                {categories.map((category) => (
+                  <tr
+                    key={category.name}
+                    data-active={activeName === category.name}
+                    onMouseEnter={() => setActiveName(category.name)}
+                    onMouseLeave={() => setActiveName(null)}
+                    onFocus={() => setActiveName(category.name)}
+                    onBlur={() => setActiveName(null)}
+                  >
+                    <th scope="row">
+                      <span
+                        className={`category-swatch category-${categoryNames.indexOf(category.name)}`}
+                        aria-hidden="true"
+                      />
+                      {category.name}
+                      <span className="secondary category-count">
+                        {category.findingIds.length} unique files
+                      </span>
+                    </th>
+                    <td className="numeric">
+                      {formatBytes(
+                        category.allocatedBytes,
+                        category.allocatedCapped,
+                      )}
+                    </td>
+                    <td className="numeric">
+                      {formatBytes(
+                        category.logicalBytes,
+                        category.logicalCapped,
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        disabled={
+                          category.findingIds.length === 0 ||
+                          retained ||
+                          state.stale
+                        }
+                        onClick={() => {
+                          session.investigate({
+                            generation: progress.generation,
+                            category: category.name,
+                            findingIds: category.findingIds,
+                          });
+                          onInvestigate();
+                        }}
+                        aria-label={`Investigate ${category.name}`}
+                      >
+                        Explore <ArrowRight size={16} aria-hidden="true" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </ResultTable>
+            {categories.some((category) => category.allocatedBytes > 0n) && (
+              <p className="secondary">
+                Start with{' '}
+                {
+                  categories.find((category) => category.allocatedBytes > 0n)
+                    ?.name
+                }
+                : largest measured allocated contribution in this scope. File
+                extensions describe format, not ownership or deletion safety.
+              </p>
+            )}
+          </>
+        )}
+      </section>
+      {denied.length > 0 && <AccessGuidance context="denied" />}
+      {attention.length > 0 && (
+        <section
+          className="attention-panel"
+          aria-labelledby="attention-heading"
+        >
+          <h3 id="attention-heading">Needs attention</h3>
+          <ul>
+            {attention.map((message, position) => (
+              <li key={position}>
+                <WarningCircle size={20} weight="fill" aria-hidden="true" />
+                <div>{message}</div>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
+      <details className="coverage-details">
+        <summary>
+          <CaretRight size={16} aria-hidden="true" />
+          Scope and access coverage
+        </summary>
+        <div className="coverage-details-body">
+          <ul>
+            {snapshot.scope.roots.map((root) => (
+              <li className="path-text" key={root.id}>
+                {root.displayPath}
+              </li>
+            ))}
+          </ul>
+          <p>
+            {snapshot.scope.exclusions.length} exclusion rules frozen at start.
+            No symlink descent; mount boundaries and unreadable entries reduce
+            coverage.
+          </p>
+          {denied.length > 0 && (
+            <div className="access-denied-list">
+              <h4>Denied by macOS</h4>
+              <p>
+                macOS refused read access to these locations, so they are
+                unknown, not empty.
+                {access?.status !== 'granted' &&
+                  ' Full Disk Access may let a new scan read them.'}
+              </p>
+              <ul aria-label="Locations macOS denied">
+                {denied.slice(0, 40).map((finding) => (
+                  <li className="path-text" key={finding.id}>
+                    {finding.displayName}
+                  </li>
+                ))}
+              </ul>
+              {access && access.status !== 'granted' && (
+                <div className="access-actions">
+                  <OpenSettingsButton />
+                </div>
+              )}
+            </div>
+          )}
+          {issues
+            .filter((finding) => finding.issue !== 'permission_denied')
+            .slice(0, 40)
+            .map((finding) => (
+              <p className="path-text" key={finding.id}>
+                {finding.displayName}: {finding.issue?.replaceAll('_', ' ')}
+              </p>
+            ))}
+          {issues.length > 40 && (
+            <p>Additional issues remain available in shared findings.</p>
+          )}
+        </div>
+      </details>
       <Notice>
         Logical size differs from allocated storage. Hard links count once;
         directory aggregates are not added again. APFS clone sharing, snapshots,
@@ -363,7 +327,7 @@ function ScanResults({
       </Notice>
       {snapshot.settled && !retained && (
         <section aria-label="Review scanned locations">
-          <h2>Review scanned locations</h2>
+          <h3>Review scanned locations</h3>
           <p>
             Check cleanup limitations for an exact scanned location. Recognition
             and size do not make its contents removable.
@@ -414,6 +378,7 @@ export function Overview({
         ),
       )
     : 0;
+  const refreshBlocked = running || (!!snapshot && !snapshot.settled);
   const phase = snapshot
     ? snapshot.settled
       ? statusLabels[snapshot.progress.status]
@@ -459,16 +424,30 @@ export function Overview({
           results describe their original scope and time. Refresh deliberately.
         </Notice>
       )}
+      {snapshot && (
+        <header className="overview-heading">
+          <h2>Where did the space go?</h2>
+          <p
+            className={snapshot.settled ? 'visually-hidden' : 'scan-phase'}
+            role="status"
+          >
+            {phase}
+          </p>
+          <p className="secondary">{elapsed}s elapsed</p>
+        </header>
+      )}
+      {!snapshot && <AccessGuidance context="first-run" />}
+      {!snapshot && <ScanSettings />}
       <Toolbar label="Scan controls">
         <button
           className="primary-action"
           disabled={
             state.loading ||
             state.busy ||
-            running ||
-            (!!snapshot && !snapshot.settled) ||
+            refreshBlocked ||
             state.preferences.roots.length === 0
           }
+          aria-describedby={refreshBlocked ? 'refresh-hint' : undefined}
           onClick={() => void session.start()}
         >
           {state.busy
@@ -490,24 +469,34 @@ export function Overview({
             Edit next scan
           </button>
         )}
+        {refreshBlocked && (
+          <span id="refresh-hint" className="toolbar-hint secondary">
+            Available when the current scan finishes.
+          </span>
+        )}
       </Toolbar>
-      <p className="scan-phase" role="status">
-        {phase}
-      </p>
-      {snapshot && (
-        <p className="secondary">
-          {elapsed}s elapsed
-          {running && snapshot.progress.currentLocation
-            ? ` · ${snapshot.progress.currentLocation}`
-            : ''}
+      {!snapshot && (
+        <p className="visually-hidden" role="status">
+          {phase}
         </p>
       )}
-      {running && (
-        <p className="secondary">
-          Current root shown above. Total work unknown; no percent estimate.
-        </p>
+      {running && snapshot && (
+        <section className="progress-card" aria-label="Scan progress">
+          <div className="progress-track" aria-hidden="true">
+            <span />
+          </div>
+          <p>
+            {snapshot.progress.currentLocation
+              ? `Reading ${snapshot.progress.currentLocation}`
+              : 'Preparing locations'}
+          </p>
+          <p className="secondary">
+            {snapshot.progress.entries.toLocaleString()} entries observed so
+            far. Total work unknown; no percent estimate.
+          </p>
+        </section>
       )}
-      {(!snapshot || editing) && <ScanSettings />}
+      {snapshot && editing && <ScanSettings />}
       {snapshot && (
         <ScanResults snapshot={snapshot} onInvestigate={onInvestigate} />
       )}

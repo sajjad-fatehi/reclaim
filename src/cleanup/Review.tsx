@@ -11,6 +11,7 @@ import type {
   HistoryResponse,
   Review as ReviewReport,
 } from './contract';
+import { OutcomeBadge, OutcomeSummary, ReversibilityTag } from './ReviewParts';
 import { useReview } from './useReview';
 
 export function Review({
@@ -44,6 +45,11 @@ export function Review({
   const selections = selection?.selections ?? [];
   const key = JSON.stringify(selections.map(selectionKey));
   const report = checked?.key === key ? checked.report : null;
+  const irreversible =
+    report?.items.some(
+      (item) => item.method !== null && item.method !== 'trash',
+    ) ?? false;
+  const removable = report?.items.filter((item) => item.method !== null) ?? [];
   const stale =
     state.stale ||
     selections.some(
@@ -98,13 +104,7 @@ export function Review({
   }, [executing, api]);
   async function executePlan(): Promise<void> {
     if (!report?.planId || executingReference.current || stale) return;
-    if (
-      report.items.some(
-        (item) => item.method !== null && item.method !== 'trash',
-      ) &&
-      !acknowledged
-    )
-      return;
+    if (irreversible && !acknowledged) return;
     executingReference.current = true;
     setExecuting(true);
     setConfirmation(false);
@@ -181,13 +181,19 @@ export function Review({
   }
   return (
     <div className="cleanup-review">
+      <header className="review-header">
+        <h1>Review &amp; Clean</h1>
+        <p className="secondary">
+          Nothing is removed until you confirm a checked plan.
+        </p>
+      </header>
       <Notice>
         Only explicitly allowlisted targets can be removed. Review exact targets
         and consequences, then confirm. Native checks run immediately before
         removal; concurrent changes between checks and the platform/tool call
         remain possible. Trash is never replaced with permanent deletion.
       </Notice>
-      <section aria-label="Review selection">
+      <section aria-label="Review selection" className="review-section">
         <h2>
           Review selection{' '}
           <span className="secondary">· {selections.length} / 100</span>
@@ -206,7 +212,7 @@ export function Review({
           <>
             <Toolbar label="Review actions">
               <button
-                className="primary"
+                className="primary-action"
                 disabled={
                   busy || executing || stale || !state.snapshot?.settled
                 }
@@ -222,7 +228,7 @@ export function Review({
               </button>
               {report?.planId && (
                 <button
-                  className="primary"
+                  className="primary-action"
                   disabled={executing || stale}
                   onClick={() => {
                     setAcknowledged(false);
@@ -234,7 +240,7 @@ export function Review({
               )}
             </Toolbar>
             {stale && (
-              <p role="alert">
+              <p role="alert" className="review-alert">
                 Selection contains stale measurements. Clear selection and
                 choose findings from a fresh scan.
               </p>
@@ -251,7 +257,18 @@ export function Review({
                     selectionKey(item.selection) === selectionKey(entry),
                 );
                 return (
-                  <li key={selectionKey(entry)}>
+                  <li
+                    key={selectionKey(entry)}
+                    className={`review-card ${
+                      item?.changed
+                        ? 'is-changed'
+                        : item?.method
+                          ? 'is-eligible'
+                          : item
+                            ? 'is-unavailable'
+                            : ''
+                    }`}
+                  >
                     <div className="review-target-heading">
                       <h3 className="path-text">
                         {item?.target ??
@@ -277,9 +294,10 @@ export function Review({
                             : item.method
                               ? 'Eligible after confirmation'
                               : 'Removal unavailable'}
+                          <ReversibilityTag method={item.method} />
                         </p>
                         <p>{item.unavailableReason}</p>
-                        <dl className="inspection-facts">
+                        <dl className="inspection-facts review-facts">
                           <dt>Logical measurement</dt>
                           <dd>
                             {formatBytes(
@@ -346,7 +364,11 @@ export function Review({
         <p role="status">{selection?.message}</p>
         {error && <p role="alert">{error}</p>}
       </section>
-      <section aria-label="Execution outcomes" aria-live="polite">
+      <section
+        aria-label="Execution outcomes"
+        aria-live="polite"
+        className="review-section"
+      >
         {executing && (
           <>
             <h2>Cleanup in progress</h2>
@@ -354,6 +376,7 @@ export function Review({
               Cancellation stops pending items; completed work is not undone.
             </p>
             <button
+              className="secondary-action"
               onClick={() => {
                 void api
                   .cancel()
@@ -373,17 +396,23 @@ export function Review({
             <h2>
               {execution.running ? 'Current outcomes' : 'Cleanup outcomes'}
             </h2>
-            <ul>
+            <OutcomeSummary items={execution.operation.items} />
+            <ul className="outcome-list">
               {execution.operation.items.map((item, index) => (
-                <li key={`${execution.operation.id}:${index}`}>
-                  <strong className="path-text">{item.label}</strong> ·{' '}
-                  {item.outcome}
+                <li
+                  key={`${execution.operation.id}:${index}`}
+                  className={`outcome-card outcome-${item.outcome}`}
+                >
+                  <div className="outcome-heading">
+                    <strong className="path-text">{item.label}</strong>
+                    <OutcomeBadge outcome={item.outcome} />
+                  </div>
                   <p>{item.explanation}</p>
                 </li>
               ))}
             </ul>
             {execution.persistenceError && (
-              <p role="alert">
+              <p role="alert" className="review-alert">
                 History persistence failed. Pending work stopped; inspect these
                 outcomes and targets before another review. Restart may retain
                 unknown outcomes.
@@ -402,63 +431,59 @@ export function Review({
         onClose={() => setConfirmation(false)}
         initialFocus={cancelReference}
       >
-        <p>
-          {report?.items.some(
-            (item) => item.method !== null && item.method !== 'trash',
-          )
+        <p className="dialog-lead">
+          {irreversible
             ? 'Irreversible tool removal. No macOS Trash recovery.'
-            : 'Move these exact directories, including local edits, to macOS Trash. Recover using macOS Trash / Put Back where available.'}
+            : 'Move these exact directories, including local edits, to macOS Trash. Recover using macOS Trash / Put Back where available.'}{' '}
+          Targets are revalidated just before removal; anything that changed is
+          skipped and marked Changed.
         </p>
-        <ul>
-          {report?.items
-            .filter((item) => item.method !== null)
-            .map((item) => (
-              <li className="path-text" key={selectionKey(item.selection)}>
-                {item.target}
-                <p>{item.unavailableReason}</p>
-              </li>
-            ))}
+        <ul className="basket">
+          {removable.map((item) => (
+            <li className="basket-item" key={selectionKey(item.selection)}>
+              <strong className="path-text">{item.target}</strong>
+              <span className="basket-size">
+                {formatBytes(item.allocatedBytes)}
+              </span>
+              <span className="basket-method">
+                {item.method?.replaceAll('_', ' ')}
+                <ReversibilityTag method={item.method} />
+              </span>
+              <p>{item.unavailableReason}</p>
+            </li>
+          ))}
         </ul>
-        <p>
-          Measurements are not guaranteed reclaimed physical space. Immediate
-          checks cannot eliminate changes between check and operation.
-        </p>
-        {report?.items.some(
-          (item) => item.method !== null && item.method !== 'trash',
-        ) && (
-          <label>
+        {irreversible && (
+          <label className="acknowledgement">
             <input
               type="checkbox"
               checked={acknowledged}
               onChange={(event) => setAcknowledged(event.target.checked)}
             />
-            I understand this tool operation is irreversible and may have
-            partial effects on error.
+            <span>
+              I understand this tool operation is irreversible and may have
+              partial effects on error.
+            </span>
           </label>
         )}
+        <p className="secondary dialog-footnote">
+          Measurements are not guaranteed reclaimed physical space. Immediate
+          checks cannot eliminate changes between check and operation.
+        </p>
         <Toolbar label="Cleanup confirmation">
           <button ref={cancelReference} onClick={() => setConfirmation(false)}>
             Cancel
           </button>
           <button
-            className="primary"
+            className="danger-action"
             disabled={
               executing ||
               stale ||
               !report?.planId ||
-              (report.items.some(
-                (item) => item.method !== null && item.method !== 'trash',
-              ) &&
-                !acknowledged)
+              (irreversible && !acknowledged)
             }
             onKeyDown={(event) => {
-              if (
-                event.key === 'Enter' &&
-                report?.items.some(
-                  (item) => item.method !== null && item.method !== 'trash',
-                )
-              )
-                event.preventDefault();
+              if (event.key === 'Enter' && irreversible) event.preventDefault();
             }}
             onClick={() => void executePlan()}
           >
@@ -466,7 +491,7 @@ export function Review({
           </button>
         </Toolbar>
       </Dialog>
-      <section aria-label="Operation history">
+      <section aria-label="Operation history" className="review-section">
         <h2>Operation history</h2>
         <p>
           Private local records, limited to 50 operations. Interrupted outcomes
@@ -516,10 +541,16 @@ export function Review({
             </p>
             <ul>
               {operation.items.map((item, index) => (
-                <li key={`${operation.id}:${index}`}>
-                  <strong className="path-text">{item.label}</strong> ·{' '}
-                  {item.method.replaceAll('_', ' ')} ·{' '}
-                  {item.outcome === 'pending' ? 'unknown' : item.outcome}
+                <li key={`${operation.id}:${index}`} className="history-item">
+                  <strong className="path-text">{item.label}</strong>
+                  <span className="secondary">
+                    {item.method.replaceAll('_', ' ')}
+                  </span>
+                  <OutcomeBadge
+                    outcome={
+                      item.outcome === 'pending' ? 'unknown' : item.outcome
+                    }
+                  />
                   <p>
                     {item.outcome === 'pending'
                       ? 'Interrupted. Status unknown; no automatic retry.'

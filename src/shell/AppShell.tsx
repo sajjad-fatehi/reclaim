@@ -222,45 +222,47 @@ export function AppShell({
               <ViewSlot active={destination === id} title={label}>
                 {id === 'settings' ? (
                   <div className="settings-content">
-                    <h2>Appearance</h2>
-                    <p>Choose how Reclaim looks on this Mac.</p>
-                    <fieldset className="appearance-options">
-                      <legend className="visually-hidden">Appearance</legend>
-                      {(
-                        [
-                          { value: 'system', label: 'System', icon: Monitor },
-                          { value: 'light', label: 'Light', icon: Sun },
-                          { value: 'dark', label: 'Dark', icon: Moon },
-                        ] as const
-                      ).map(
-                        ({
-                          value,
-                          label: appearanceLabel,
-                          icon: AppearanceIcon,
-                        }) => (
-                          <label key={value} className="appearance-option">
-                            <input
-                              type="radio"
-                              name="appearance"
-                              value={value}
-                              checked={preference === value}
-                              onChange={() => changeAppearance(value)}
-                            />
-                            <AppearanceIcon size={20} aria-hidden="true" />
-                            <span>{appearanceLabel}</span>
-                          </label>
-                        ),
+                    <section className="settings-card appearance-card">
+                      <h2>Appearance</h2>
+                      <p>Choose how Reclaim looks on this Mac.</p>
+                      <fieldset className="appearance-options">
+                        <legend className="visually-hidden">Appearance</legend>
+                        {(
+                          [
+                            { value: 'system', label: 'System', icon: Monitor },
+                            { value: 'light', label: 'Light', icon: Sun },
+                            { value: 'dark', label: 'Dark', icon: Moon },
+                          ] as const
+                        ).map(
+                          ({
+                            value,
+                            label: appearanceLabel,
+                            icon: AppearanceIcon,
+                          }) => (
+                            <label key={value} className="appearance-option">
+                              <input
+                                type="radio"
+                                name="appearance"
+                                value={value}
+                                checked={preference === value}
+                                onChange={() => changeAppearance(value)}
+                              />
+                              <AppearanceIcon size={20} aria-hidden="true" />
+                              <span>{appearanceLabel}</span>
+                            </label>
+                          ),
+                        )}
+                      </fieldset>
+                      <p className="secondary">
+                        System follows your Mac’s appearance automatically.
+                      </p>
+                      {persistenceError && (
+                        <Notice>
+                          Appearance could not be saved. Your choice applies
+                          until Reclaim closes.
+                        </Notice>
                       )}
-                    </fieldset>
-                    <p className="secondary">
-                      System follows your Mac’s appearance automatically.
-                    </p>
-                    {persistenceError && (
-                      <Notice>
-                        Appearance could not be saved. Your choice applies until
-                        Reclaim closes.
-                      </Notice>
-                    )}
+                    </section>
                     {views.settings}
                     {!views.settings && (
                       <div className="settings-future">

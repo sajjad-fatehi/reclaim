@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "access-guidance"
+description = "Allow a read-only Full Disk Access status probe and opening the fixed Full Disk Access System Settings pane; no other URL or privilege change."
+commands.allow = ["access_status", "access_open_settings"]

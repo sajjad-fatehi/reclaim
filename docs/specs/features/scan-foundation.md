@@ -324,3 +324,11 @@ measurement DTOs, scope, generation, page and cancellation semantics remain inta
 reads, optional confined Git status, limits and inspection-only eligibility.
 `scan_cancel` cancels either phase. Measurement-only descriptions above concern
 the walker, not the recognition phase's explicitly documented content reads.
+
+## Access guidance extension
+
+`permission_denied` coverage issues are surfaced with Full Disk Access guidance; see
+[Full Disk Access guidance](overview-and-scope.md#full-disk-access-guidance). The scanner
+contract is unchanged. `access_status` and `access_open_settings` are separate
+argument-free commands under the `access-guidance` permission, authorized for the `main`
+window only, and do not start or influence scans.

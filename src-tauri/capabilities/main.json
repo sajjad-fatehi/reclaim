@@ -8,6 +8,7 @@
     "core:app:allow-version",
     "scan-read-only",
     "docker-read-only",
-    "cleanup-review"
+    "cleanup-review",
+    "access-guidance"
   ]
 }

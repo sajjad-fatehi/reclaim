@@ -17,6 +17,13 @@ macOS read/write/network/exec confinement, never hooks or missing-tool installer
 It may read repository contents to determine change status, but returns no contents
 or raw command output. Recognition is inspection-only, not deletion authority.
 See [recognition boundaries](docs/specs/features/development-recognition.md).
+Full Disk Access guidance adds two argument-free commands, `access_status` (read-only
+directory probes of TCC-protected locations, no names or contents read or logged) and
+`access_open_settings` (opens only the fixed Privacy & Security → Full Disk Access pane).
+Reclaim never requests elevation or bypasses macOS privacy controls; the user grants
+access, and unsigned or development builds attach the grant to the launching binary or
+terminal and may lose it across rebuilds. See
+[access guidance](docs/specs/features/overview-and-scope.md#full-disk-access-guidance).
 There is no supported release line or promised security maintenance window. No
 security audit or finalized deletion policy is claimed.
 

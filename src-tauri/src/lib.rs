@@ -1,5 +1,6 @@
 //! Native read-only scans and explicitly confirmed cleanup. No generic frontend filesystem or shell capability.
 
+pub mod access;
 pub mod scan;
 
 pub mod cleanup;

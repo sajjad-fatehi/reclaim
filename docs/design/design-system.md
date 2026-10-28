@@ -6,22 +6,22 @@ Status: implemented in `src/shell/tokens.css` as the Atlas direction, a visualiz
 
 ## Color roles
 
-| Semantic role | Light | Dark |
-| --- | --- | --- |
-| Canvas | `#FBF5EC` plus peach and lilac glows | `#120E1C` plus violet and plum glows |
-| Surface (opaque panel) | `#FFFCF7` | `#221B34` |
-| Raised surface | `#F4ECE2` | `#2C2342` |
-| Glass / strong glass | `rgb(255 255 255 / .72)` / `.9` | `rgb(255 255 255 / .07)` / `rgb(34 27 52 / .94)` |
-| Edge | `rgb(60 40 90 / .16)` | `rgb(255 255 255 / .14)` |
-| Primary text | `#241A33` | `#F4F0FB` |
-| Secondary text | `#5D5270` | `#BDB4D1` |
-| Control boundary | `#8C7FA3` | `#8F84AB` |
-| Accent fill / accent text | `#5B3FD6` / `#4A2FC0` | `#7A5CF0` / `#C0B0FF` |
-| On accent | `#FFFFFF` | `#FFFFFF` |
-| Selection ground / text | `#E6DEFB` / `#3A2394` | `#3A2D66` / `#E6DCFF` |
-| Warning text / surface | `#7A4A00` / `#FFF0D0` | `#F6CD78` / `#33270E` |
-| Danger text | `#A8261C` | `#FF958B` |
-| Success text | `#0C6B36` | `#86E3A5` |
+| Semantic role             | Light                           | Dark                                             |
+| ------------------------- | ------------------------------- | ------------------------------------------------ |
+| Canvas                    | `#F3F8FC` plus pale sky glows   | `#0C1722` plus deep sky glows                    |
+| Surface (opaque panel)    | `#FFFFFF`                       | `#14232F`                                        |
+| Raised surface            | `#E6F0F8`                       | `#1C2F3E`                                        |
+| Glass / strong glass      | `rgb(255 255 255 / .72)` / `.9` | `rgb(255 255 255 / .07)` / `rgb(20 35 47 / .94)` |
+| Edge                      | `rgb(20 60 100 / .16)`          | `rgb(255 255 255 / .14)`                         |
+| Primary text              | `#12202E`                       | `#EEF5FB`                                        |
+| Secondary text            | `#475A6C`                       | `#A9BCCD`                                        |
+| Control boundary          | `#6C869B`                       | `#7F97AB`                                        |
+| Accent fill / accent text | `#0577B8` / `#075F94`           | `#38B6F5` / `#7CC8FB`                            |
+| On accent                 | `#FFFFFF`                       | `#06202F`                                        |
+| Selection ground / text   | `#D6ECFA` / `#0B5A8A`           | `#1C3A52` / `#E6F4FF`                            |
+| Warning text / surface    | `#7A4A00` / `#FFF0D0`           | `#F6CD78` / `#33270E`                            |
+| Danger text               | `#A8261C`                       | `#FF958B`                                        |
+| Success text              | `#0C6B36`                       | `#86E3A5`                                        |
 
 Warning, danger and success text above is intended on surface or glass over the canvas; check the exact pair before introducing another background. Decorative dividers are not the sole boundary of a control; use the control boundary when the edge carries an affordance.
 
@@ -29,18 +29,18 @@ Warning, danger and success text above is intended on surface or glass over the 
 
 Seven categories (dependencies, build, docker, stores, editor, worktrees, logs) plus unknown, in two independent sets so text contrast and graphic contrast are tuned separately:
 
-| Category | Tile light | Chart light | Tile and chart dark |
-| --- | --- | --- | --- |
-| Dependencies | `#B2BFFF` | `#4A60E6` | `#A3B2FF` |
-| Build | `#FFCD96` | `#C96A00` | `#FFBF80` |
-| Docker | `#93E0EE` | `#0A8FA6` | `#70D9EC` |
-| Stores | `#DCC2FF` | `#8648DC` | `#CDA4FF` |
-| Editor | `#A2E8BB` | `#17924D` | `#86E3A5` |
-| Worktrees | `#FFB6CD` | `#D82F60` | `#FF9DBB` |
-| Logs | `#D5D0DF` | `#716A85` | `#C4BFD3` |
-| Unknown | `#E8E3EE` | `#6D6580` | `#B9B2C9` |
+| Category     | Tile light | Chart light | Tile and chart dark |
+| ------------ | ---------- | ----------- | ------------------- |
+| Dependencies | `#C4C9FF`  | `#4A55D6`   | `#AAB4FF`           |
+| Build        | `#FFCD96`  | `#C96A00`   | `#FFBF80`           |
+| Docker       | `#8FE3D0`  | `#0B8F78`   | `#6FDCC4`           |
+| Stores       | `#E8CFA8`  | `#9A6420`   | `#E8C48C`           |
+| Editor       | `#CFE99A`  | `#5D8F17`   | `#BDE37A`           |
+| Worktrees    | `#FFB6CD`  | `#D82F60`   | `#FF9DBB`           |
+| Logs         | `#D3DAE2`  | `#64758A`   | `#C3CCD6`           |
+| Unknown      | `#E3E8EE`  | `#5F6F82`   | `#AAB5C1`           |
 
-Text on tiles is `#1C1626` in both themes. Chart fills keep at least 3:1 against the light canvas; dark fills are bright on a dark canvas. Every color has a persistent text label. Unknown and outside-scope areas use a hatch, never a plain fill, and color never implies deletion eligibility.
+Text on tiles is `#10202E` in both themes. Chart fills keep at least 3:1 against the light canvas; dark fills are bright on a dark canvas. Every color has a persistent text label. Unknown and outside-scope areas use a hatch, never a plain fill, and color never implies deletion eligibility.
 
 Use translucency and soft glows at shell and panel scale. Keep dense tables crisp: no blur or gradient behind data cells.
 
