@@ -4,7 +4,8 @@ Follow [shared requirements](index.md) and [interaction flows](../../design/inte
 
 ## Required behavior
 
-- First run shows editable suggested locations, purpose and access state. Add locations through the actual native picker, remove suggestions and explicitly Start scan. No traversal before that action.
+- Overview hero holds one large primary scan button: Start scan (not started), progress plus Cancel scan (running), Scan again (settled states; disabled with "Available when the current scan finishes." while loading final data). Beside it a scope summary ("N locations · M exclusions") has one Edit action that toggles the scan settings; there is no separate Edit next scan control.
+- First run shows the hero and scope summary; Edit reveals editable suggested locations, purpose and access state. Add locations through the actual native picker, remove suggestions and explicitly Start scan. No traversal before that action.
 - Settings manages scan locations, exclusions and access explanations; use the shell's appearance settings. Persist preferences locally with validated atomic writes and safe corrupt-file handling. Persisting a path does not grant fresh consent to scan on launch.
 - Exclusions have clear exact/subtree semantics and visible coverage effects. Handle duplicate, nested, missing and inaccessible roots, new/removed volumes and changed permissions. Apply scope changes to the next scan; do not silently alter an active scan.
 - Own one frontend scan-session orchestration layer consumed by completed sections. Surface stage/location/elapsed time, measured findings, cancellation and completed/partial/failed states. Do not invent percent completion when total work is unknown or continuously reorder interacting lists.
