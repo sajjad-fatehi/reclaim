@@ -66,7 +66,7 @@ exact transport details will be added below after implementation.
 
 Rust DTO definitions are authoritative: `reclaim_core::scan::{Finding, Progress,
 Volume, VolumeAccounting, Issue, Kind, Status}` and
-`reclaim_desktop::scan::{Location, Locations, Scope, Current, Page, BoundaryError}`.
+`reclaim_desktop::scan::{Location, Locations, Scope, Current, Summary, Children, Search, BoundaryError}`.
 DTOs serialize with camelCase keys and snake_case enum values. All byte quantities
 are decimal **strings** (nullable where unavailable); timestamps are Unix
 milliseconds, generations/counts/offsets are bounded JSON numbers. No TypeScript
@@ -81,8 +81,11 @@ Invoke these app commands from the local `main` WebView using Tauri `invoke`:
 | `scan_register_scope` | `{ locationIds: string[] }` | `Scope { id, roots: Location[] }`; 1–16 existing native candidate IDs, duplicates removed; explicit user submission authorizes these roots |
 | `scan_start` | `{ scopeId: string }` | Initial `Progress` for a new generation; starts one background worker; rejects stale/replaced root paths |
 | `scan_current` | `{}` | `{ scope: Scope \| null, progress: Progress \| null }`; starts no work |
-| `scan_status` | `{ generation: number }` | Current `Progress` |
-| `scan_page` | `{ generation: number, offset: number, limit: number }` | `Page { progress, offset, nextOffset: number \| null, findings: Finding[] }`; limit 1–200 |
+| `scan_status` | `{ generation: number }` | Current `Progress`, including `retention`, `sharingUntracked` and per-volume `categories` |
+| `scan_summary` | `{ generation }` | `Summary { generation, progress, roots, topLevel, topFiles, issues }`; terminal sessions only (`busy` while running). Bounded (< 100 KB on a 200k-file fixture): `roots` ≤ 16 effective-root findings, `topLevel` ≤ 64 largest retained children of roots, `topFiles` ≤ 25 largest files per category (`{ category, displayName, displayPath, logicalBytes, allocatedBytes, modifiedAtMs, identity, findingId }`, `findingId` null when the file is not retained), `issues` one `{ issue, count, examples: Finding[≤5] }` per issue kind among retained findings |
+| `scan_children` | `{ generation, parentId: string \| null, cursor: string \| null, limit, sort }` | `Children { generation, parentId, sort, total, nextCursor: string \| null, findings: Finding[], folded: { items, logicalBytes, allocatedBytes } \| null }`; terminal only; `parentId: null` lists effective roots; `limit` 1–200; `sort` is `size` (allocated bytes descending), `name` (case-insensitive ascending) or `modified` (newest first, unknown last), each tie-broken by finding index so order is total; `nextCursor` is opaque and bound to generation, parent and sort; `folded` is the parent's summary row (entries measured but not retained), `null` for roots |
+| `scan_search` | `{ generation, query, limit }` | `Search { generation, total, findings }`; terminal only; case-insensitive substring over **retained** names (never the root path); `query` 1–256 characters, `limit` 1–200; `total` counts every retained match, `findings` holds the largest `limit` by allocated bytes (index tie-break) |
+| `scan_findings` | `{ generation, ids: string[] }` | `Finding[]` in request order; terminal only; 1–200 IDs; any unknown or forged ID rejects the whole request |
 | `scan_cancel` | `{ generation: number }` | Current `Progress`; requests cooperative cancellation, never claims synchronous completion |
 
 `Location` contains random UUID `id`, bounded `displayPath` and `volume` metadata.
@@ -109,7 +112,10 @@ more than one issue; `Finding.issue` retains its latest issue.
 `Finding` contains opaque `id` (`generation:index`, not a path authorization),
 parentId, displayName, kind (`directory`, `file`, `symlink`, `other`, `unknown`),
 logicalBytes, allocatedBytes, measuredAtMs, nullable modifiedAtMs, nullable identity
-(device/inode observation), aliasOf, complete and nullable issue. Root displayName
+(device/inode observation), aliasOf, complete and nullable issue, plus the retention fields `foldedItems`,
+`foldedLogicalBytes`, `foldedAllocatedBytes` (entries below the node measured but not
+retained), `descendantItems` (every entry below, retained or folded) and `detail`
+(`full`, or `summarized` when anything is folded). Root displayName
 is its bounded display path; descendants contain only their display name. Native
 `ScanData::path(index)` reconstructs authoritative lossless paths from retained
 parent/name components. `ScanService::with_terminal_scan` provides native consumers
@@ -118,17 +124,22 @@ Consumers must copy needed metadata before expensive analysis. Identity reuse an
 subsequent filesystem changes require fresh validation before any future cleanup;
 these observations never establish deletion eligibility.
 
-Records append during traversal; aggregates and completeness change in place.
-Pages are not immutable snapshots while running. Poll progress for live status,
-then retrieve/retrieve-again terminal pages for final directory aggregates. A null
-nextOffset means end of **currently retained** records, not completion; check status.
+Records are published when the walk settles and directory aggregates are final at
+that point. While running, poll `scan_status` only; `scan_summary`, `scan_children`,
+`scan_search` and `scan_findings` return `busy` until the session is terminal and
+then read an immutable snapshot. A finding ID is resolved in O(1): it must be exactly
+`generation:index` in canonical decimal form for the requested generation and an
+existing retained index, otherwise `invalid_request`. Cursors are validated the same
+way; a cursor from another generation, parent or sort is `invalid_request`. There is
+no whole-list paging command and no entry-count limit on the transport.
 Empty authorized directories still have a root finding. Completed file findings
 and measured bytes survive cancellation/errors. Interrupted ancestor coverage is
 incomplete; unreadable/vanished entries have explicit issues and unknown measurement,
 not evidence of an empty directory. Their numeric contribution is zero **only as
 an accounting contribution**; `complete: false`/issue must remain visible.
 
-`scan_current`, `scan_status` and `scan_page` share a per-session 100 ms read budget
+`scan_current`, `scan_status`, `scan_summary`, `scan_children`, `scan_search`,
+`scan_findings` and `recognition_page` share a per-session 100 ms read budget
 (maximum 10 successful retrievals/second). Call one at a time; retry `rate_limited`
 after at least 100 ms. No events, timers or unbounded result streams are emitted.
 Cancel/start requests do not consume that read budget.

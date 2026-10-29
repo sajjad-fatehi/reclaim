@@ -38,11 +38,24 @@ export interface Scope {
 }
 export type ScanStatus =
   'running' | 'complete' | 'partial' | 'cancelled' | 'failed';
+export type CategoryName = 'Documents' | 'Media' | 'Archives' | 'Other files';
+export interface CategoryTotal {
+  name: CategoryName;
+  logicalBytes: string;
+  allocatedBytes: string;
+  count: number;
+}
 export interface VolumeAccounting {
   volume: Volume;
   scopeLogicalBytes: string;
   scopeAllocatedBytes: string;
+  categories: CategoryTotal[];
   unscannedOrUnexplainedBytes: string | null;
+}
+export interface Retention {
+  nodes: number;
+  thresholdBytes: string;
+  budgetReached: boolean;
 }
 export interface Progress {
   generation: number;
@@ -56,7 +69,10 @@ export interface Progress {
   logicalBytes: string;
   allocatedBytes: string;
   volumes: VolumeAccounting[];
+  retention: Retention;
+  sharingUntracked: boolean;
 }
+export type Detail = 'full' | 'summarized';
 export interface Finding {
   id: string;
   parentId: string | null;
@@ -70,7 +86,56 @@ export interface Finding {
   aliasOf: string | null;
   complete: boolean;
   issue: string | null;
+  foldedItems: number;
+  foldedLogicalBytes: string;
+  foldedAllocatedBytes: string;
+  descendantItems: number;
+  detail: Detail;
 }
+export type ChildSort = 'size' | 'name' | 'modified';
+export interface TopFile {
+  category: CategoryName;
+  displayName: string;
+  displayPath: string;
+  logicalBytes: string;
+  allocatedBytes: string;
+  modifiedAtMs: number | null;
+  identity: string;
+  findingId: string | null;
+}
+export interface IssueGroup {
+  issue: string;
+  count: number;
+  examples: Finding[];
+}
+export interface Summary {
+  generation: number;
+  progress: Progress;
+  roots: Finding[];
+  topLevel: Finding[];
+  topFiles: TopFile[];
+  issues: IssueGroup[];
+}
+export interface FoldedRow {
+  items: number;
+  logicalBytes: string;
+  allocatedBytes: string;
+}
+export interface Children {
+  generation: number;
+  parentId: string | null;
+  sort: ChildSort;
+  total: number;
+  nextCursor: string | null;
+  findings: Finding[];
+  folded: FoldedRow | null;
+}
+export interface Search {
+  generation: number;
+  total: number;
+  findings: Finding[];
+}
+/** Temporary shape for the pre-T3 session: bounded summary findings in a single page. */
 export interface Page {
   progress: Progress;
   offset: number;
@@ -88,6 +153,17 @@ export interface ScanApi {
   register: (locations: string[], exclusions: Exclusion[]) => Promise<Scope>;
   start: (scopeId: string) => Promise<Progress>;
   current: () => Promise<{ scope: Scope | null; progress: Progress | null }>;
+  status: (generation: number) => Promise<Progress>;
+  summary: (generation: number) => Promise<Summary>;
+  children: (
+    generation: number,
+    parentId: string | null,
+    cursor: string | null,
+    sort: ChildSort,
+  ) => Promise<Children>;
+  search: (generation: number, query: string) => Promise<Search>;
+  findings: (generation: number, ids: string[]) => Promise<Finding[]>;
+  /** Adapter until the session reads the summary directly; removed with the paging loop. */
   page: (generation: number, offset: number) => Promise<Page>;
   cancel: (generation: number) => Promise<Progress>;
 }
@@ -130,6 +206,16 @@ function bytes(value: unknown): string {
   if (!/^(0|[1-9]\d{0,19})$/.test(text) || BigInt(text) > 18446744073709551615n)
     throw new Error('Invalid bytes');
   return text;
+}
+function categoryName(value: unknown): CategoryName {
+  if (
+    value !== 'Documents' &&
+    value !== 'Media' &&
+    value !== 'Archives' &&
+    value !== 'Other files'
+  )
+    throw new Error('Invalid category');
+  return value;
 }
 function appearance(value: unknown): Appearance {
   if (value !== 'system' && value !== 'light' && value !== 'dark')
@@ -199,12 +285,31 @@ function progress(value: unknown): Progress {
         volume: volume(accounting.volume),
         scopeLogicalBytes: bytes(accounting.scopeLogicalBytes),
         scopeAllocatedBytes: bytes(accounting.scopeAllocatedBytes),
+        categories: array(accounting.categories, (value) => {
+          const category = record(value);
+          return {
+            name: categoryName(category.name),
+            logicalBytes: bytes(category.logicalBytes),
+            allocatedBytes: bytes(category.allocatedBytes),
+            count: number(category.count),
+          };
+        }),
         unscannedOrUnexplainedBytes: nullable(
           accounting.unscannedOrUnexplainedBytes,
           bytes,
         ),
       };
     }),
+    retention: retention(data.retention),
+    sharingUntracked: boolean(data.sharingUntracked),
+  };
+}
+function retention(value: unknown): Retention {
+  const data = record(value);
+  return {
+    nodes: number(data.nodes),
+    thresholdBytes: bytes(data.thresholdBytes),
+    budgetReached: boolean(data.budgetReached),
   };
 }
 function finding(value: unknown): Finding {
@@ -231,6 +336,78 @@ function finding(value: unknown): Finding {
     aliasOf: nullable(data.aliasOf, string),
     complete: boolean(data.complete),
     issue: nullable(data.issue, string),
+    foldedItems: number(data.foldedItems),
+    foldedLogicalBytes: bytes(data.foldedLogicalBytes),
+    foldedAllocatedBytes: bytes(data.foldedAllocatedBytes),
+    descendantItems: number(data.descendantItems),
+    detail: detail(data.detail),
+  };
+}
+function detail(value: unknown): Detail {
+  if (value !== 'full' && value !== 'summarized')
+    throw new Error('Invalid detail');
+  return value;
+}
+function sort(value: unknown): ChildSort {
+  if (value !== 'size' && value !== 'name' && value !== 'modified')
+    throw new Error('Invalid sort');
+  return value;
+}
+export function parseSummary(value: unknown): Summary {
+  const data = record(value);
+  return {
+    generation: number(data.generation),
+    progress: progress(data.progress),
+    roots: array(data.roots, finding),
+    topLevel: array(data.topLevel, finding),
+    topFiles: array(data.topFiles, (value) => {
+      const file = record(value);
+      return {
+        category: categoryName(file.category),
+        displayName: string(file.displayName),
+        displayPath: string(file.displayPath),
+        logicalBytes: bytes(file.logicalBytes),
+        allocatedBytes: bytes(file.allocatedBytes),
+        modifiedAtMs: nullable(file.modifiedAtMs, number),
+        identity: string(file.identity),
+        findingId: nullable(file.findingId, string),
+      };
+    }),
+    issues: array(data.issues, (value) => {
+      const group = record(value);
+      return {
+        issue: string(group.issue),
+        count: number(group.count),
+        examples: array(group.examples, finding),
+      };
+    }),
+  };
+}
+export function parseChildren(value: unknown): Children {
+  const data = record(value);
+  return {
+    generation: number(data.generation),
+    parentId: nullable(data.parentId, string),
+    sort: sort(data.sort),
+    total: number(data.total),
+    nextCursor: nullable(data.nextCursor, string),
+    findings: array(data.findings, finding),
+    folded: nullable(data.folded, (value) => {
+      const row = record(value);
+      return {
+        items: number(row.items),
+        logicalBytes: bytes(row.logicalBytes),
+        allocatedBytes: bytes(row.allocatedBytes),
+      };
+    }),
+  };
+}
+export function parseSearch(value: unknown): Search {
+  const data = record(value);
+  return {
+    generation: number(data.generation),
+    total: number(data.total),
+    findings: array(data.findings, finding),
   };
 }
 async function request<Value>(
@@ -291,16 +468,40 @@ export const nativeScanApi: ScanApi = {
         progress: nullable(data.progress, progress),
       };
     }),
-  page: (generation, offset) =>
-    request('scan_page', { generation, offset, limit: 200 }, (value) => {
-      const data = record(value);
-      return {
-        progress: progress(data.progress),
-        offset: number(data.offset),
-        nextOffset: nullable(data.nextOffset, number),
-        findings: array(data.findings, finding),
-      };
-    }),
+  status: (generation) => request('scan_status', { generation }, progress),
+  summary: (generation) =>
+    request('scan_summary', { generation }, parseSummary),
+  children: (generation, parentId, cursor, sort) =>
+    request(
+      'scan_children',
+      { generation, parentId, cursor, limit: 200, sort },
+      parseChildren,
+    ),
+  search: (generation, query) =>
+    request('scan_search', { generation, query, limit: 200 }, parseSearch),
+  findings: (generation, ids) =>
+    request('scan_findings', { generation, ids }, (value) =>
+      array(value, finding),
+    ),
+  page: async (generation) => {
+    const current = await nativeScanApi.status(generation);
+    if (current.status === 'running')
+      return { progress: current, offset: 0, nextOffset: null, findings: [] };
+    const summary = await nativeScanApi.summary(generation);
+    const unique = new Map<string, Finding>();
+    for (const item of [
+      ...summary.roots,
+      ...summary.topLevel,
+      ...summary.issues.flatMap((group) => group.examples),
+    ])
+      unique.set(item.id, item);
+    return {
+      progress: summary.progress,
+      offset: 0,
+      nextOffset: null,
+      findings: [...unique.values()],
+    };
+  },
   cancel: (generation) => request('scan_cancel', { generation }, progress),
 };
 

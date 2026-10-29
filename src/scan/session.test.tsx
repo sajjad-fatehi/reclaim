@@ -306,6 +306,7 @@ test('unavailable volume metrics stay unknown in rendered Overview', async () =>
       },
       scopeLogicalBytes: '5',
       scopeAllocatedBytes: '4096',
+      categories: [],
       unscannedOrUnexplainedBytes: null,
     },
   ];
@@ -395,6 +396,7 @@ test.each(['allocation', 'volume'] as const)(
         },
         scopeLogicalBytes: maximum,
         scopeAllocatedBytes: file.allocatedBytes,
+        categories: [],
         unscannedOrUnexplainedBytes:
           source === 'allocation' ? '0' : '18446744073709551610',
       },

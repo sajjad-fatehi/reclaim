@@ -16,14 +16,20 @@ pub struct Inspection {
     pub recognized_at_id: Option<String>,
 }
 
+/// Finding IDs are `generation:index` in canonical decimal form; anything else is forged.
 pub(super) fn resolve(data: &ScanData, finding_id: &str) -> BoundaryResult<usize> {
-    if finding_id.len() > 64 {
+    let (generation, index) = finding_id
+        .split_once(':')
+        .filter(|_| finding_id.len() <= 64)
+        .ok_or(ErrorCode::InvalidRequest)?;
+    let generation = canonical_number(generation).ok_or(ErrorCode::InvalidRequest)?;
+    let index = canonical_number(index)
+        .and_then(|index| usize::try_from(index).ok())
+        .ok_or(ErrorCode::InvalidRequest)?;
+    if generation != u64::from(data.progress.generation) || index >= data.records.len() {
         return Err(ErrorCode::InvalidRequest.into());
     }
-    data.records
-        .iter()
-        .position(|record| record.finding.id == finding_id)
-        .ok_or_else(|| ErrorCode::InvalidRequest.into())
+    Ok(index)
 }
 
 fn changed() -> BoundaryError {
