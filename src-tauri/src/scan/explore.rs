@@ -216,7 +216,7 @@ mod tests {
         let temporary = tempfile::tempdir().unwrap();
         std::fs::create_dir(temporary.path().join("folder")).unwrap();
         std::fs::write(temporary.path().join("folder/file"), b"synthetic").unwrap();
-        let service = ScanService::default();
+        let service = ScanService::exhaustive();
         let location = service.register_native_location(temporary.path()).unwrap();
         let scope = lock(&service.authority).register(&[location.id]).unwrap();
         let generation = service.start(&scope.id).unwrap().generation;

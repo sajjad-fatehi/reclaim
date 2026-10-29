@@ -90,7 +90,7 @@ fn main() {
         std::fs::create_dir(&directory).unwrap();
         std::fs::write(directory.join("synthetic.txt"), b"x").unwrap();
     }
-    let scanner = Arc::new(ScanService::default());
+    let scanner = Arc::new(ScanService::exhaustive());
     let candidates = vec![
         scanner.register_native_location(&selected).unwrap(),
         scanner.register_native_location(&large).unwrap(),

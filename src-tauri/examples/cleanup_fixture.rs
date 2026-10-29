@@ -131,7 +131,7 @@ fn main() {
     }
     std::fs::write(selected.join("synthetic.jpg"), vec![0u8; 32768]).unwrap();
     std::fs::write(selected.join("cache/excluded.bin"), vec![0u8; 1024]).unwrap();
-    let scanner = Arc::new(ScanService::default());
+    let scanner = Arc::new(ScanService::exhaustive());
     let candidates = vec![
         scanner.register_native_location(&selected).unwrap(),
         scanner.register_native_location(&large).unwrap(),
