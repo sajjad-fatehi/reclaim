@@ -136,6 +136,8 @@ test('real Overview fixture flow edits scope and exclusions, starts explicitly a
   );
   await act(async () => vi.advanceTimersByTimeAsync(0));
   expect(start).not.toHaveBeenCalled();
+  expect(screen.queryByLabelText('Scan locations and exclusions')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add folder…' }));
   await act(async () => vi.advanceTimersByTimeAsync(0));
   fireEvent.click(
@@ -240,6 +242,7 @@ test('corrupt settings and missing roots stay actionable without auto-start; fai
     </ScanProvider>,
   );
   await act(async () => vi.advanceTimersByTimeAsync(0));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
   expect(screen.getByText(/Saved settings are corrupt/)).toBeTruthy();
   expect(screen.getByText(/Unavailable · volume missing/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Start scan' }));
@@ -432,3 +435,30 @@ test.each(['allocation', 'volume'] as const)(
       expect(within(documents).getByText('5 B')).toBeTruthy();
   },
 );
+
+test('hero scan button label follows state, Cancel works, Edit reveals settings', async () => {
+  const api = createFixtureApi();
+  const cancel = vi.spyOn(api, 'cancel');
+  render(
+    <ScanProvider api={api}>
+      <Overview onInvestigate={() => undefined} />
+    </ScanProvider>,
+  );
+  await act(async () => vi.advanceTimersByTimeAsync(0));
+  expect(screen.getByText(/\d+ locations? · \d+ exclusions?/)).toBeTruthy();
+  const edit = screen.getByRole('button', { name: 'Edit' });
+  expect(edit.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(edit);
+  expect(edit.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByLabelText('Scan locations and exclusions')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Start scan' }));
+  await act(async () => vi.advanceTimersByTimeAsync(10));
+  expect(screen.queryByRole('button', { name: 'Start scan' })).toBeNull();
+  expect(screen.getByText('Measuring metadata').textContent).toMatch(
+    /Measuring/,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel scan' }));
+  await act(async () => vi.advanceTimersByTimeAsync(640));
+  expect(cancel).toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Scan again' })).toBeTruthy();
+});

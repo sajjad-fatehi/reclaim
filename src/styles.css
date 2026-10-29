@@ -661,8 +661,35 @@ main {
   gap: var(--space-medium);
   min-width: 0;
 }
-.overview-content > .toolbar .primary-action {
+.scan-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-small) var(--space-large);
+}
+.empty-state .scan-hero {
+  margin-top: var(--space-medium);
+}
+.scan-hero-button {
+  min-height: 56px;
+  padding-inline: 2.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
   margin-top: 0;
+}
+.scan-scope-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-small);
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .empty-state .scan-hero {
+    margin-top: var(--space-medium);
+  }
+  .scan-hero-button {
+    width: 100%;
+  }
 }
 .scan-results > h2 {
   margin-top: var(--space-large);

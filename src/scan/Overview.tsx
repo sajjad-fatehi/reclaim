@@ -5,7 +5,7 @@ import { ChartPieSlice } from '@phosphor-icons/react/ChartPieSlice';
 import { CaretRight } from '@phosphor-icons/react/CaretRight';
 import { WarningCircle } from '@phosphor-icons/react/WarningCircle';
 import './overview.css';
-import { EmptyState, Notice, ResultTable, Toolbar } from '../shell/primitives';
+import { EmptyState, Notice, ResultTable } from '../shell/primitives';
 import folderIllustration from '../../assets/illustrations/reclaim-folder.webp';
 import { useScanSession } from './useScanSession';
 import { categorize, categoryNames, formatBytes } from './accounting';
@@ -23,6 +23,10 @@ const statusLabels = {
   cancelled: 'Scan cancelled',
   failed: 'Scan failed',
 };
+function pluralize(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
 function ScanResults({
   snapshot,
   retained = false,
@@ -386,6 +390,55 @@ export function Overview({
         ? 'Measuring metadata'
         : 'Loading final measurements'
     : 'Scan not started';
+  const scanHero = (
+    <section className="scan-hero" aria-label="Scan controls">
+      {running ? (
+        <button
+          className="scan-hero-button"
+          onClick={() => void session.cancel()}
+          disabled={state.cancelling}
+        >
+          {state.cancelling ? 'Cancelling…' : 'Cancel scan'}
+        </button>
+      ) : (
+        <button
+          className="primary-action scan-hero-button"
+          disabled={
+            state.loading ||
+            state.busy ||
+            refreshBlocked ||
+            state.preferences.roots.length === 0
+          }
+          aria-describedby={refreshBlocked ? 'refresh-hint' : undefined}
+          onClick={() => void session.start()}
+        >
+          {state.busy
+            ? 'Preparing scan…'
+            : snapshot
+              ? 'Scan again'
+              : 'Start scan'}
+        </button>
+      )}
+      <p className="scan-scope-summary secondary">
+        {state.loading
+          ? 'Loading saved settings…'
+          : `${pluralize(state.preferences.roots.length, 'location')} · ${pluralize(state.preferences.exclusions.length, 'exclusion')}`}
+        <button
+          className="scan-scope-edit"
+          onClick={() => setEditing(!editing)}
+          aria-expanded={editing}
+          aria-controls="scan-settings-panel"
+        >
+          Edit
+        </button>
+      </p>
+      {refreshBlocked && !running && (
+        <span id="refresh-hint" className="toolbar-hint secondary">
+          Available when the current scan finishes.
+        </span>
+      )}
+    </section>
+  );
   return (
     <div className="overview-content">
       {!snapshot && (
@@ -399,6 +452,7 @@ export function Overview({
               it, with unknowns kept in view.
             </p>
             <p>No scan starts until you choose Start scan.</p>
+            {scanHero}
           </EmptyState>
           <img
             className="folder-illustration"
@@ -436,45 +490,8 @@ export function Overview({
           <p className="secondary">{elapsed}s elapsed</p>
         </header>
       )}
+      {snapshot && scanHero}
       {!snapshot && <AccessGuidance context="first-run" />}
-      {!snapshot && <ScanSettings />}
-      <Toolbar label="Scan controls">
-        <button
-          className="primary-action"
-          disabled={
-            state.loading ||
-            state.busy ||
-            refreshBlocked ||
-            state.preferences.roots.length === 0
-          }
-          aria-describedby={refreshBlocked ? 'refresh-hint' : undefined}
-          onClick={() => void session.start()}
-        >
-          {state.busy
-            ? 'Preparing scan…'
-            : snapshot
-              ? 'Refresh scan'
-              : 'Start scan'}
-        </button>
-        {running && (
-          <button
-            onClick={() => void session.cancel()}
-            disabled={state.cancelling}
-          >
-            {state.cancelling ? 'Cancelling…' : 'Cancel scan'}
-          </button>
-        )}
-        {snapshot && (
-          <button onClick={() => setEditing(!editing)} aria-expanded={editing}>
-            Edit next scan
-          </button>
-        )}
-        {refreshBlocked && (
-          <span id="refresh-hint" className="toolbar-hint secondary">
-            Available when the current scan finishes.
-          </span>
-        )}
-      </Toolbar>
       {!snapshot && (
         <p className="visually-hidden" role="status">
           {phase}
@@ -496,7 +513,11 @@ export function Overview({
           </p>
         </section>
       )}
-      {snapshot && editing && <ScanSettings />}
+      {editing && (
+        <div id="scan-settings-panel">
+          <ScanSettings />
+        </div>
+      )}
       {snapshot && (
         <ScanResults snapshot={snapshot} onInvestigate={onInvestigate} />
       )}
