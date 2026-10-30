@@ -1,6 +1,4 @@
-import { categoryFor } from './accounting';
 import type { Category } from './accounting';
-import type { Finding } from './contract';
 
 export interface SunburstItem {
   id: string;
@@ -22,31 +20,21 @@ function compareBytesDescending(left: bigint, right: bigint): number {
 }
 
 /**
- * Splits each category into its largest files plus one remainder item so the
- * outer ring always sums to the inner ring. Findings come from the same
- * deduplicated set as `categorize`, so shared usage is never counted twice.
+ * Splits each category into its largest native top files plus one remainder
+ * item so the outer ring always sums to the inner ring.
  */
 export function buildSunburstCategories(
   categories: Category[],
   categoryIndex: (name: Category['name']) => number,
-  findings: Finding[],
 ): SunburstCategory[] {
-  const findingsById = new Map(
-    findings.map((finding) => [finding.id, finding]),
-  );
   return categories
     .filter((category) => category.allocatedBytes > 0n)
     .map((category) => {
-      const files = category.findingIds
-        .map((id) => findingsById.get(id))
-        .filter(
-          (finding): finding is Finding =>
-            finding !== undefined && categoryFor(finding) === category.name,
-        )
-        .map((finding) => ({
-          id: finding.id,
-          label: finding.displayName,
-          bytes: BigInt(finding.allocatedBytes),
+      const files = category.files
+        .map((file) => ({
+          id: file.identity,
+          label: file.displayName,
+          bytes: BigInt(file.allocatedBytes),
         }))
         .filter((item) => item.bytes > 0n)
         .sort((left, right) => compareBytesDescending(left.bytes, right.bytes));

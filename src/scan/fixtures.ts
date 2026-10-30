@@ -1,10 +1,14 @@
 import type {
+  CategoryName,
+  CategoryTotal,
   Finding,
   Location,
   Preferences,
   Progress,
   ScanApi,
   Scope,
+  Summary,
+  TopFile,
 } from './contract';
 import { emptyPreferences } from './session';
 
@@ -21,6 +25,22 @@ export const fixtureLocation: Location = {
     metricIssue: null,
   },
 };
+export function fixtureCategories(
+  documentsAllocated = '4096',
+): CategoryTotal[] {
+  const names: CategoryName[] = [
+    'Documents',
+    'Media',
+    'Archives',
+    'Other files',
+  ];
+  return names.map((name) => ({
+    name,
+    logicalBytes: name === 'Documents' ? '5' : '0',
+    allocatedBytes: name === 'Documents' ? documentsAllocated : '0',
+    count: name === 'Documents' ? 1 : 0,
+  }));
+}
 export function fixtureProgress(
   status: Progress['status'] = 'complete',
   generation = 1,
@@ -43,7 +63,7 @@ export function fixtureProgress(
         volume: fixtureLocation.volume,
         scopeLogicalBytes: '5',
         scopeAllocatedBytes: '4096',
-        categories: [],
+        categories: fixtureCategories(),
         unscannedOrUnexplainedBytes: '595904',
       },
     ],
@@ -91,6 +111,56 @@ export function fixtureFindings(generation = 1): Finding[] {
     },
   ];
 }
+export function fixtureTopFiles(generation = 1): TopFile[] {
+  return [
+    {
+      category: 'Documents',
+      displayName: 'synthetic.txt',
+      displayPath: `${fixtureLocation.displayPath}/synthetic.txt`,
+      logicalBytes: '5',
+      allocatedBytes: '4096',
+      modifiedAtMs: null,
+      identity: 'fixture:2',
+      findingId: `${generation}:1`,
+    },
+  ];
+}
+/** Splits flat findings into the summary shape: roots, top level and issue groups. */
+export function summaryOf(
+  progress: Progress,
+  findings: Finding[],
+  topFiles: TopFile[] = fixtureTopFiles(progress.generation),
+): Summary {
+  const groups = new Map<string, Finding[]>();
+  for (const finding of findings)
+    if (finding.issue !== null)
+      groups.set(finding.issue, [
+        ...(groups.get(finding.issue) ?? []),
+        finding,
+      ]);
+  return {
+    generation: progress.generation,
+    progress,
+    roots: findings.filter((finding) => finding.parentId === null),
+    topLevel: findings.filter((finding) => finding.parentId !== null),
+    topFiles,
+    issues: [...groups].map(([issue, examples]) => ({
+      issue,
+      count: examples.length,
+      examples,
+    })),
+  };
+}
+/** Makes the fixture API report a fixed terminal progress and its summary. */
+export function serveScan(
+  api: ScanApi,
+  progress: Progress,
+  findings: Finding[],
+  topFiles?: TopFile[],
+): void {
+  api.status = async () => progress;
+  api.summary = async () => summaryOf(progress, findings, topFiles);
+}
 export function createFixtureApi(): ScanApi {
   let preferences: Preferences = {
     ...emptyPreferences,
@@ -121,17 +191,11 @@ export function createFixtureApi(): ScanApi {
     current: async () => ({ scope: null, progress: null }),
     status: async (currentGeneration) =>
       fixtureProgress('complete', currentGeneration),
-    summary: async (currentGeneration) => {
-      const findings = fixtureFindings(currentGeneration);
-      return {
-        generation: currentGeneration,
-        progress: fixtureProgress('complete', currentGeneration),
-        roots: findings.slice(0, 1),
-        topLevel: findings.slice(1),
-        topFiles: [],
-        issues: [],
-      };
-    },
+    summary: async (currentGeneration) =>
+      summaryOf(
+        fixtureProgress('complete', currentGeneration),
+        fixtureFindings(currentGeneration),
+      ),
     children: async (currentGeneration, parentId, _cursor, sort) => ({
       generation: currentGeneration,
       parentId,
@@ -150,12 +214,6 @@ export function createFixtureApi(): ScanApi {
       fixtureFindings(currentGeneration).filter((finding) =>
         ids.includes(finding.id),
       ),
-    page: async (currentGeneration, offset) => ({
-      progress: fixtureProgress('complete', currentGeneration),
-      offset,
-      nextOffset: null,
-      findings: fixtureFindings(currentGeneration),
-    }),
     cancel: async (currentGeneration) =>
       fixtureProgress('cancelled', currentGeneration),
   };
