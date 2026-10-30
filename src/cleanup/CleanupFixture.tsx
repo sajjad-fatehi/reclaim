@@ -6,6 +6,7 @@ import {
   fixtureFindings,
   fixtureLocation,
   fixtureProgress,
+  serveScan,
 } from '../scan/fixtures';
 import { Review } from './Review';
 import { ReviewProvider } from './ReviewProvider';
@@ -30,12 +31,7 @@ scanApi.current = async () => ({
   scope: { id: 'fixture', roots: [fixtureLocation], exclusions: [] },
   progress: fixtureProgress(),
 });
-scanApi.page = async () => ({
-  progress: fixtureProgress(),
-  offset: 0,
-  nextOffset: null,
-  findings: fixtureFindings(),
-});
+serveScan(scanApi, fixtureProgress(), fixtureFindings());
 
 function buildReview(scenario: Scenario): ReviewReport {
   const targets = [

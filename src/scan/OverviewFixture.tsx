@@ -3,8 +3,20 @@ import { appearanceKey } from '../shell/appearance';
 import type { AccessApi, FullDiskAccess } from '../access/contract';
 import { ScanProvider } from './context';
 import { ScanApplication } from './ScanApplication';
-import { createFixtureApi, fixtureLocation, fixtureProgress } from './fixtures';
-import type { Finding, Progress, ScanApi } from './contract';
+import {
+  createFixtureApi,
+  fixtureLocation,
+  fixtureProgress,
+  serveScan,
+} from './fixtures';
+import type {
+  CategoryName,
+  CategoryTotal,
+  Finding,
+  Progress,
+  ScanApi,
+  TopFile,
+} from './contract';
 
 const gibibyte = 1024n ** 3n;
 const fixtureVolume = {
@@ -56,6 +68,57 @@ function fixtureFindingSet(): Finding[] {
   return [root, ...files];
 }
 
+const categoryByExtension: Record<string, CategoryName> = {
+  mov: 'Media',
+  pdf: 'Documents',
+  zip: 'Archives',
+  bin: 'Other files',
+};
+const categoryOrder: CategoryName[] = [
+  'Documents',
+  'Media',
+  'Archives',
+  'Other files',
+];
+
+function categoryOf(finding: Finding): CategoryName {
+  const extension = finding.displayName.split('.').pop() ?? '';
+  return categoryByExtension[extension] ?? 'Other files';
+}
+
+function categoriesFor(findings: Finding[], volumeId: string): CategoryTotal[] {
+  const files = findings.filter(
+    (finding) =>
+      finding.kind === 'file' && finding.identity?.startsWith(`${volumeId}:`),
+  );
+  return categoryOrder.map((name) => {
+    const members = files.filter((file) => categoryOf(file) === name);
+    const sum = (pick: (file: Finding) => string): string =>
+      String(members.reduce((total, file) => total + BigInt(pick(file)), 0n));
+    return {
+      name,
+      logicalBytes: sum((file) => file.logicalBytes),
+      allocatedBytes: sum((file) => file.allocatedBytes),
+      count: members.length,
+    };
+  });
+}
+
+function topFilesFor(findings: Finding[]): TopFile[] {
+  return findings
+    .filter((finding) => finding.kind === 'file')
+    .map((finding) => ({
+      category: categoryOf(finding),
+      displayName: finding.displayName,
+      displayPath: `${fixtureLocation.displayPath}/${finding.displayName}`,
+      logicalBytes: finding.logicalBytes,
+      allocatedBytes: finding.allocatedBytes,
+      modifiedAtMs: null,
+      identity: finding.identity ?? finding.id,
+      findingId: finding.id,
+    }));
+}
+
 function measuredBytes(findings: Finding[]): bigint {
   return findings
     .filter((finding) => finding.kind === 'file')
@@ -84,7 +147,7 @@ function progressFor(
         volume: fixtureVolume,
         scopeLogicalBytes: String(measured),
         scopeAllocatedBytes: String(measured),
-        categories: [],
+        categories: categoriesFor(findings, fixtureVolume.id),
         unscannedOrUnexplainedBytes: String(unscanned),
       },
     ],
@@ -150,14 +213,11 @@ function createOverviewApi(state: FixtureState): ScanApi {
   const multivolume = state === 'multivolume';
   const complete = state === 'complete' || multivolume;
   const status: Progress['status'] = multivolume ? 'complete' : state;
-  const findings =
-    state === 'running'
-      ? []
-      : multivolume
-        ? [...fixtureFindingSet(), ...secondVolumeFindings()]
-        : complete
-          ? fixtureFindingSet()
-          : [...fixtureFindingSet(), ...issueFindings];
+  const findings = multivolume
+    ? [...fixtureFindingSet(), ...secondVolumeFindings()]
+    : complete
+      ? fixtureFindingSet()
+      : [...fixtureFindingSet(), ...issueFindings];
   const progress = progressFor(status, findings);
   if (multivolume) {
     const secondMeasured = measuredBytes(secondVolumeFindings());
@@ -167,7 +227,7 @@ function createOverviewApi(state: FixtureState): ScanApi {
         volume: fixtureVolume,
         scopeLogicalBytes: String(firstMeasured),
         scopeAllocatedBytes: String(firstMeasured),
-        categories: [],
+        categories: categoriesFor(fixtureFindingSet(), fixtureVolume.id),
         unscannedOrUnexplainedBytes: String(
           BigInt(fixtureVolume.totalBytes) -
             BigInt(fixtureVolume.freeBytes) -
@@ -178,7 +238,7 @@ function createOverviewApi(state: FixtureState): ScanApi {
         volume: secondVolume,
         scopeLogicalBytes: String(secondMeasured),
         scopeAllocatedBytes: String(secondMeasured),
-        categories: [],
+        categories: categoriesFor(secondVolumeFindings(), secondVolume.id),
         unscannedOrUnexplainedBytes: String(
           BigInt(secondVolume.totalBytes) -
             BigInt(secondVolume.freeBytes) -
@@ -191,12 +251,8 @@ function createOverviewApi(state: FixtureState): ScanApi {
     scope: { id: 'fixture', roots: [fixtureLocation], exclusions: [] },
     progress,
   });
-  api.page = async (_generation, offset) => ({
-    progress,
-    offset,
-    nextOffset: null,
-    findings,
-  });
+  const topFiles = state === 'running' ? [] : topFilesFor(findings);
+  serveScan(api, progress, state === 'running' ? [] : findings, topFiles);
   return api;
 }
 

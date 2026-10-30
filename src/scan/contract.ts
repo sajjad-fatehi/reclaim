@@ -135,13 +135,6 @@ export interface Search {
   total: number;
   findings: Finding[];
 }
-/** Temporary shape for the pre-T3 session: bounded summary findings in a single page. */
-export interface Page {
-  progress: Progress;
-  offset: number;
-  nextOffset: number | null;
-  findings: Finding[];
-}
 export interface ScanApi {
   loadPreferences: () => Promise<Preferences>;
   savePreferences: (preferences: Preferences) => Promise<void>;
@@ -163,8 +156,6 @@ export interface ScanApi {
   ) => Promise<Children>;
   search: (generation: number, query: string) => Promise<Search>;
   findings: (generation: number, ids: string[]) => Promise<Finding[]>;
-  /** Adapter until the session reads the summary directly; removed with the paging loop. */
-  page: (generation: number, offset: number) => Promise<Page>;
   cancel: (generation: number) => Promise<Progress>;
 }
 
@@ -483,25 +474,6 @@ export const nativeScanApi: ScanApi = {
     request('scan_findings', { generation, ids }, (value) =>
       array(value, finding),
     ),
-  page: async (generation) => {
-    const current = await nativeScanApi.status(generation);
-    if (current.status === 'running')
-      return { progress: current, offset: 0, nextOffset: null, findings: [] };
-    const summary = await nativeScanApi.summary(generation);
-    const unique = new Map<string, Finding>();
-    for (const item of [
-      ...summary.roots,
-      ...summary.topLevel,
-      ...summary.issues.flatMap((group) => group.examples),
-    ])
-      unique.set(item.id, item);
-    return {
-      progress: summary.progress,
-      offset: 0,
-      nextOffset: null,
-      findings: [...unique.values()],
-    };
-  },
   cancel: (generation) => request('scan_cancel', { generation }, progress),
 };
 

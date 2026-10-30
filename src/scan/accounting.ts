@@ -1,4 +1,4 @@
-import type { Finding } from './contract';
+import type { CategoryName, TopFile, VolumeAccounting } from './contract';
 
 export const maximumNativeBytes = 18446744073709551615n;
 
@@ -6,85 +6,49 @@ export function isCappedBytes(value: string | bigint | null): boolean {
   return value !== null && BigInt(value) === maximumNativeBytes;
 }
 
-export const categoryNames = [
+export const categoryNames: CategoryName[] = [
   'Documents',
   'Media',
   'Archives',
   'Other files',
-] as const;
-export type CategoryName = (typeof categoryNames)[number];
+];
 export interface Category {
   name: CategoryName;
   logicalBytes: bigint;
   allocatedBytes: bigint;
   logicalCapped: boolean;
   allocatedCapped: boolean;
-  findingIds: string[];
+  count: number;
+  files: TopFile[];
 }
-export function categoryFor(finding: Finding): CategoryName {
-  const extension = finding.displayName.split('.').pop()?.toLowerCase() ?? '';
-  if (
-    [
-      'pdf',
-      'txt',
-      'md',
-      'doc',
-      'docx',
-      'xls',
-      'xlsx',
-      'csv',
-      'ppt',
-      'pptx',
-      'rtf',
-    ].includes(extension)
-  )
-    return 'Documents';
-  if (
-    [
-      'png',
-      'jpg',
-      'jpeg',
-      'webp',
-      'gif',
-      'heic',
-      'mov',
-      'mp4',
-      'mp3',
-      'wav',
-      'm4a',
-      'mkv',
-    ].includes(extension)
-  )
-    return 'Media';
-  if (['zip', 'gz', 'tar', 'xz', '7z', 'dmg', 'iso'].includes(extension))
-    return 'Archives';
-  return 'Other files';
-}
-export function categorize(findings: Finding[]): Category[] {
+/**
+ * Sums native per-volume category totals. Native code owns classification and
+ * the invariant that categories add up to the volume's allocated scope; every
+ * category is always present so the table keeps stable rows.
+ */
+export function categorize(
+  volumes: VolumeAccounting[],
+  topFiles: TopFile[] = [],
+): Category[] {
   const categories: Category[] = categoryNames.map((name) => ({
     name,
     logicalBytes: 0n,
     allocatedBytes: 0n,
     logicalCapped: false,
     allocatedCapped: false,
-    findingIds: [],
+    count: 0,
+    files: topFiles.filter((file) => file.category === name),
   }));
-  for (const finding of findings) {
-    if (
-      finding.kind !== 'file' ||
-      finding.aliasOf !== null ||
-      finding.issue === 'excluded'
-    )
-      continue;
+  for (const total of volumes.flatMap((volume) => volume.categories)) {
     const category = categories.find(
-      (category) => category.name === categoryFor(finding),
+      (candidate) => candidate.name === total.name,
     );
     if (!category) continue;
-    category.logicalCapped ||= isCappedBytes(finding.logicalBytes);
-    category.allocatedCapped ||= isCappedBytes(finding.allocatedBytes);
-    category.logicalBytes += BigInt(finding.logicalBytes);
-    category.allocatedBytes += BigInt(finding.allocatedBytes);
-    category.findingIds.push(finding.id);
+    category.logicalCapped ||= isCappedBytes(total.logicalBytes);
+    category.allocatedCapped ||= isCappedBytes(total.allocatedBytes);
+    category.logicalBytes += BigInt(total.logicalBytes);
+    category.allocatedBytes += BigInt(total.allocatedBytes);
+    category.count += total.count;
   }
   return categories.sort((left, right) =>
     left.allocatedBytes === right.allocatedBytes
