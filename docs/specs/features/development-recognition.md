@@ -117,13 +117,47 @@ identity; metadata reads require a complete regular-file record, cap at 64 KiB a
 recheck size/change timestamps. Content is never emitted. A replaced/unavailable
 root or entry becomes a scoped diagnostic, never authority to follow another path.
 
-Recognition retains a bounded path/child index over the scanner's at most 100,000
-records (at most 16 MiB of indexed native path bytes), at most 4,096 cached metadata reads and approximately 8 MiB of metadata
+Recognition runs over the scanner's bounded retained set, not every measured entry.
+The recognition module owns one `const` pin list (marker files, generated and
+tool-store directories, protected names, editor/worktree layouts, with parent-path
+context where a bare name is too generic). The scanner consumes it as its pin
+predicate, so every marker recognition reads by name is retained regardless of size
+or depth. Pins have a scanner budget; exhausting it sets `limited` and a
+`pin_budget_exhausted` diagnostic. Tree size alone never sets `limited`: there is no
+path-byte index, and child lookups use a map over retained records only.
+
+Names that cannot be pinned (dependency manifests named by a project manifest,
+Node distribution layout, editor profile files, Git registry files) are resolved by
+a read-only lazy probe. A probe starts at a retained directory, reopens its verified
+descriptor chain, and walks each component with `openat`/`statat` using no-follow
+semantics; it never follows symlinks, never crosses a mount, never reads content
+beyond the existing metadata rules and is skipped when the retained directory is
+`Full` (every child is already retained). A probed file has no scanner record, so
+its evidence and diagnostics cite the nearest retained ancestor. At most 8,192
+probes run per analysis; exhaustion sets `limited`.
+
+Artifacts only attach to retained directories or files. A configured or
+environment-named cache location that is not retained (small and unpinned) yields
+the scoped diagnostic `configured_location_not_retained` and no size claim.
+
+Exclusive and owned totals use directory aggregates: a node's subtree total minus
+the totals of its nearest nested artifacts (exclusive) or nested projects (owned).
+Retained-set math is exact because folded descendants stay inside their retained
+ancestor's total. Each artifact carries `displayName`, `parentId` and `kind` so the
+Development view does not need every scanner record.
+
+Recognition keeps at most 4,096 cached metadata reads and approximately 8 MiB of metadata
 (one final read may exceed the total budget by at most 64 KiB). Analysis has a
 15-second cooperative budget, checked between records/reads; a running Git call
 can add at most its two-second deadline plus OS scheduling/syscall time. No hard
 latency guarantee covers blocked filesystem calls. Cancellation/limits retain
 findings and mark analysis incomplete. No unbounded subprocess output is retained.
+
+Differential acceptance: recognition over the same fixtures with full retention and
+with pruned retention (depth 0, no size threshold, recognition pins only) yields the
+same artifacts and byte totals; evidence may cite an ancestor when its file is only
+probed. A drift test requires every literal passed to `child()` or `probe()` to be
+pinned or listed for lazy probing.
 
 Git state uses only the installed Command Line Tools Git binary at
 `/Library/Developer/CommandLineTools/usr/bin/git`; it never invokes `/usr/bin/git`
@@ -177,7 +211,7 @@ No tool is required for filesystem-family inventory.
 | Temporary locations | Explicitly scanned root equal to canonical `/private/tmp` (`/tmp` picker alias) or process `TMPDIR` | Custom `TMPDIR` must itself be a selected scan root. A child merely named `tmp` is not recognized; no blanket temp cleanup. |
 
 Configuration files are parsed only if scanned; referenced directories must also
-be retained scanner directories. Relative paths resolve against their config file;
+be retained scanner directories (large or pinned stores are retained automatically). Relative paths resolve against their config file;
 `..` is normalized without escaping consent. No shell expansion, `~`, includes,
 command interpolation or searches outside scope. Environment locations are captured
 from the native process and matched only to already scanned directories. Absent paths
