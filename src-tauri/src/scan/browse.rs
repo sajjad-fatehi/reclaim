@@ -790,7 +790,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "creates 200,000 files; run with --ignored"]
     fn summary_stays_small_on_a_200k_file_fixture() {
         let temporary = tempfile::tempdir().unwrap();
         let extensions = ["txt", "png", "zip", "bin"];
