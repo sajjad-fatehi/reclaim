@@ -186,7 +186,10 @@ fn main() {
             scan::scan_start,
             scan::scan_current,
             scan::scan_status,
-            scan::scan_page,
+            scan::browse::scan_summary,
+            scan::browse::scan_children,
+            scan::browse::scan_search,
+            scan::browse::scan_findings,
             scan::scan_cancel,
             scan::explore::scan_inspect
         ]);
