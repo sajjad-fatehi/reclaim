@@ -17,7 +17,7 @@ pub struct Inspection {
 }
 
 /// Finding IDs are `generation:index` in canonical decimal form; anything else is forged.
-pub(super) fn resolve(data: &ScanData, finding_id: &str) -> BoundaryResult<usize> {
+pub(crate) fn resolve(data: &ScanData, finding_id: &str) -> BoundaryResult<usize> {
     let (generation, index) = finding_id
         .split_once(':')
         .filter(|_| finding_id.len() <= 64)

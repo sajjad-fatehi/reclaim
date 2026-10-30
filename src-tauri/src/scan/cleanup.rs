@@ -1,4 +1,5 @@
 //! Immediate, bounded observations before normal pathname operations; not an atomic race guarantee.
+use super::fingerprint::Fingerprint;
 use super::*;
 use reclaim_core::cleanup::{filesystem_method, Method};
 use reclaim_core::recognition::{self, Nature};
@@ -22,6 +23,7 @@ pub(crate) struct Target {
     pub path: PathBuf,
     pub method: Method,
     pub repository: Option<PathBuf>,
+    pub fingerprint: Fingerprint,
     pub stamps: Vec<Stamp>,
 }
 
@@ -129,53 +131,25 @@ impl ScanService {
         if !protected.is_empty() {
             return Err(ErrorCode::InvalidRequest.into());
         }
-        let mut expected = std::collections::HashMap::new();
-        for (position, original) in data.records.iter().enumerate() {
-            let original_path = data.path(position).ok_or(ErrorCode::InvalidRequest)?;
-            if !original_path.starts_with(&path) {
-                continue;
-            }
-            // Folded descendants were never compared; without a full retained subtree the
-            // comparison below cannot prove the target unchanged, so it stays ineligible.
-            if original.finding.kind == scan::Kind::Directory
-                && original.finding.detail != scan::Detail::Full
-            {
-                return Err(ErrorCode::Unavailable.into());
-            }
-            expected.insert(original_path, original);
-        }
-        let fresh = Arc::new(Mutex::new(ScanData::new(generation)));
-        scan::scan_with_policy(
-            vec![Root::open(&path)?],
-            Vec::new(),
-            scan::RetentionPolicy::exhaustive(expected.len().saturating_add(1)),
-            fresh.clone(),
-            Arc::new(AtomicBool::new(false)),
-        );
-        let fresh = lock(&fresh);
-        if fresh.progress.status != Status::Complete {
+        let fingerprint = Fingerprint::measure(&Root::open(&path)?, method == Method::Trash)?;
+        let finding = &record.finding;
+        // Totals and root metadata tie the fresh walk back to what the scan measured and the
+        // user reviewed; the digest then pins the exact tree for the pre-dispatch comparison.
+        if finding.identity.as_deref()
+            != Some(
+                format!(
+                    "{}:{}",
+                    fingerprint.root_identity.0, fingerprint.root_identity.1
+                )
+                .as_str(),
+            )
+            || finding.descendant_items.checked_add(1) != Some(fingerprint.count)
+            || finding.logical_bytes != fingerprint.logical_bytes
+            || finding.allocated_bytes != fingerprint.allocated_bytes
+        {
             return Err(ErrorCode::Unavailable.into());
         }
         let mut stamps = Vec::new();
-        if fresh.records.len() != expected.len() {
-            return Err(ErrorCode::Unavailable.into());
-        }
-        for (position, current) in fresh.records.iter().enumerate() {
-            let current_path = fresh.path(position).ok_or(ErrorCode::InvalidRequest)?;
-            let original = expected.get(&current_path).ok_or(ErrorCode::Unavailable)?;
-            if original.finding.identity != current.finding.identity
-                || original.finding.kind != current.finding.kind
-                || original.finding.modified_at_ms != current.finding.modified_at_ms
-                || original.finding.issue.is_some()
-                || original.finding.alias_of.is_some()
-                || (current.finding.kind == scan::Kind::File
-                    && original.finding.logical_bytes != current.finding.logical_bytes)
-                || current.name == ".git" && method == Method::Trash
-            {
-                return Err(ErrorCode::Unavailable.into());
-            }
-            stamps.push(observe(current_path, false)?);
-        }
         let mut ancestor = record.parent;
         while let Some(position) = ancestor {
             let ancestor_path = data.path(position).ok_or(ErrorCode::InvalidRequest)?;
@@ -238,6 +212,7 @@ impl ScanService {
             path,
             method,
             repository,
+            fingerprint,
             stamps,
         })
     }

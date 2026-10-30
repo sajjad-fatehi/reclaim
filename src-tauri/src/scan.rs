@@ -1192,6 +1192,7 @@ mod tests {
 pub mod browse;
 pub(crate) mod cleanup;
 pub mod explore;
+mod fingerprint;
 
 #[cfg(test)]
 pub(crate) mod cleanup_review_tests {
@@ -1260,21 +1261,35 @@ pub(crate) mod cleanup_review_tests {
         }
     }
 
-    #[test]
-    fn cleanup_target_is_ineligible_when_retention_folded_part_of_the_subtree() {
+    const DEEP: &str = "node_modules/a/b/c/d/e";
+
+    /// Default retention folds `DEEP`: no record below depth 2 survives, only totals do.
+    fn folded_fixture(extra_files: usize) -> (tempfile::TempDir, Arc<ScanService>, u32, String) {
         let temporary = tempfile::tempdir().unwrap();
-        fs::create_dir(temporary.path().join("node_modules")).unwrap();
+        let modules = temporary.path().join("node_modules");
+        let deep = temporary.path().join(DEEP);
+        fs::create_dir_all(&deep).unwrap();
         fs::write(
             temporary.path().join("package.json"),
             br#"{"name":"SYNTHETIC"}"#,
         )
         .unwrap();
-        fs::write(temporary.path().join("node_modules/dependency.js"), b"x").unwrap();
         fs::write(
-            temporary.path().join("node_modules/.package-lock.json"),
+            modules.join(".package-lock.json"),
             br#"{"lockfileVersion":3,"packages":{}}"#,
         )
         .unwrap();
+        fs::write(deep.join("one.js"), b"one").unwrap();
+        fs::write(deep.join("two.js"), b"second").unwrap();
+        fs::create_dir(deep.join("leaf")).unwrap();
+        fs::write(deep.join("leaf/three.js"), b"3").unwrap();
+        for chunk in 0..extra_files.div_ceil(1_000) {
+            let directory = modules.join(format!("bulk{chunk}"));
+            fs::create_dir(&directory).unwrap();
+            for file in 0..1_000.min(extra_files - chunk * 1_000) {
+                fs::write(directory.join(file.to_string()), b"").unwrap();
+            }
+        }
         let service = Arc::new(ScanService::default());
         let location = service.register_native_location(temporary.path()).unwrap();
         let scope = lock(&service.authority).register(&[location.id]).unwrap();
@@ -1282,20 +1297,144 @@ pub(crate) mod cleanup_review_tests {
         super::tests::terminal(&service);
         let finding_id = service
             .with_terminal_scan(generation, |data| {
+                assert!(data.records.iter().all(|record| record.name != "one.js"));
                 let record = data
                     .records
                     .iter()
                     .find(|record| record.name == "node_modules")
                     .unwrap();
-                assert_eq!(record.finding.detail, scan::Detail::Summarized);
+                assert!(data
+                    .records
+                    .iter()
+                    .any(|record| record.finding.detail == scan::Detail::Summarized));
                 record.finding.id.clone()
             })
             .unwrap();
-        let error = service
-            .cleanup_target(generation, &finding_id)
-            .err()
-            .expect("folded subtree is not eligible");
-        assert_eq!(error.code, ErrorCode::Unavailable);
+        (temporary, service, generation, finding_id)
+    }
+
+    #[test]
+    fn summarized_target_is_eligible_and_its_plan_revalidates_until_anything_inside_changes() {
+        use std::os::unix::fs::MetadataExt;
+        type Mutation = Box<dyn Fn(&std::path::Path)>;
+        let mutations: Vec<(&str, Mutation)> = vec![
+            (
+                "add file",
+                Box::new(|deep| fs::write(deep.join("new.js"), b"n").unwrap()),
+            ),
+            (
+                "add directory",
+                Box::new(|deep| fs::create_dir(deep.join("new")).unwrap()),
+            ),
+            (
+                "remove file",
+                Box::new(|deep| fs::remove_file(deep.join("two.js")).unwrap()),
+            ),
+            (
+                "remove directory",
+                Box::new(|deep| fs::remove_dir_all(deep.join("leaf")).unwrap()),
+            ),
+            (
+                "rename file",
+                Box::new(|deep| fs::rename(deep.join("one.js"), deep.join("uno.js")).unwrap()),
+            ),
+            (
+                "rename directory",
+                Box::new(|deep| fs::rename(deep.join("leaf"), deep.join("leaf2")).unwrap()),
+            ),
+            (
+                "replace inode, same name size and mtime",
+                Box::new(|deep| {
+                    let path = deep.join("one.js");
+                    let modified = fs::metadata(&path).unwrap().modified().unwrap();
+                    let inode = fs::metadata(&path).unwrap().ino();
+                    fs::remove_file(&path).unwrap();
+                    let mut tries = 0;
+                    loop {
+                        fs::write(&path, b"one").unwrap();
+                        fs::File::options()
+                            .write(true)
+                            .open(&path)
+                            .unwrap()
+                            .set_modified(modified)
+                            .unwrap();
+                        if fs::metadata(&path).unwrap().ino() != inode || tries > 50 {
+                            break;
+                        }
+                        fs::remove_file(&path).unwrap();
+                        tries += 1;
+                    }
+                }),
+            ),
+            (
+                "change mtime only",
+                Box::new(|deep| {
+                    let file = fs::File::options()
+                        .write(true)
+                        .open(deep.join("one.js"))
+                        .unwrap();
+                    file.set_modified(
+                        std::time::SystemTime::now() + std::time::Duration::from_secs(3600),
+                    )
+                    .unwrap();
+                }),
+            ),
+            (
+                "change size",
+                Box::new(|deep| fs::write(deep.join("two.js"), b"second!!").unwrap()),
+            ),
+            (
+                "change deep nested file",
+                Box::new(|deep| fs::write(deep.join("leaf/three.js"), b"33").unwrap()),
+            ),
+            (
+                "replace file with symlink",
+                Box::new(|deep| {
+                    fs::remove_file(deep.join("one.js")).unwrap();
+                    symlink("two.js", deep.join("one.js")).unwrap();
+                }),
+            ),
+        ];
+        for (label, mutate) in mutations {
+            let (temporary, service, generation, finding_id) = folded_fixture(0);
+            let planned = service.cleanup_target(generation, &finding_id).unwrap();
+            assert!(
+                service.cleanup_target(generation, &finding_id).unwrap() == planned,
+                "unchanged tree must revalidate: {label}"
+            );
+            mutate(&temporary.path().join(DEEP));
+            let current = service.cleanup_target(generation, &finding_id);
+            assert!(
+                current.is_err() || current.is_ok_and(|current| current != planned),
+                "plan survived: {label}"
+            );
+        }
+    }
+
+    #[test]
+    fn target_with_more_than_250k_entries_is_eligible_and_revalidates() {
+        let (_temporary, service, generation, finding_id) = folded_fixture(250_000);
+        let planned = service.cleanup_target(generation, &finding_id).unwrap();
+        assert!(planned.fingerprint.count > 250_000);
+        assert!(service.cleanup_target(generation, &finding_id).unwrap() == planned);
+    }
+
+    #[test]
+    fn walk_issues_or_git_inside_a_trash_target_make_it_ineligible() {
+        use std::os::unix::fs::PermissionsExt;
+        let (temporary, service, generation, finding_id) = folded_fixture(0);
+        let deep = temporary.path().join(DEEP);
+        fs::create_dir(deep.join(".git")).unwrap();
+        assert!(service.cleanup_target(generation, &finding_id).is_err());
+        fs::remove_dir(deep.join(".git")).unwrap();
+        fs::set_permissions(deep.join("leaf"), fs::Permissions::from_mode(0o000)).unwrap();
+        let denied = service.cleanup_target(generation, &finding_id);
+        fs::set_permissions(deep.join("leaf"), fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(denied.is_err());
+        let (temporary, service, generation, finding_id) = folded_fixture(0);
+        let deep = temporary.path().join(DEEP);
+        fs::hard_link(deep.join("one.js"), deep.join("leaf/linked.js")).unwrap();
+        assert!(service.cleanup_target(generation, &finding_id).is_err());
     }
 
     #[test]
