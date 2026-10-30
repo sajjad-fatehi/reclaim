@@ -30,10 +30,25 @@ recursive-delete fallback, Trash emptying, force, broad prune or automatic clean
   observations, method and consequences. Maximum 100 targets, one current plan,
   120-second expiry, consumed once. Parent/child overlap is skipped without expanding
   selection. UI paths/sizes/commands are never trusted input.
-- Immediately before dispatch, verify current generation/scope, all target subtree
-  identities/types/sizes/timestamps and evidence/ancestor observations, current
-  recognition/protection and exclusions. Known changes require fresh scan/review.
-  Checks are bounded by the existing scanner limits. No contents are logged.
+- Immediately before dispatch, verify current generation/scope, the target subtree
+  fingerprint and evidence/ancestor observations, current recognition/protection and
+  exclusions. Known changes require fresh scan/review. Checks are bounded by the
+  scanner depth limit, not by the retained-detail budget; targets with more than
+  250,000 entries qualify. No contents or paths are logged.
+- Target subtree fingerprint (decision note `0f406613-d5c9-4d3b-99bd-390bb2cf8ffb`):
+  a fresh, unpruned descriptor-anchored walk of the target, independent of what the
+  scan retained, computed at review/eligibility time and again immediately before
+  dispatch. It covers entry count, logical bytes, allocated bytes and an
+  order-independent SHA-256 multiset digest over every entry's relative name bytes,
+  kind, dev:ino, size and mtime (nanoseconds). Plans carry the fingerprint; dispatch
+  proceeds only if a fresh walk is equal. At review the count and byte totals must
+  also equal the scan's measurement of the target, and the root identity and mtime
+  must equal the scan record. Any walk issue inside the target (unreadable, vanished,
+  changed during the walk, mount boundary, depth limit, interior hard-link alias,
+  unknown type, or a `.git` entry under a Trash target) makes the target ineligible.
+  Add, remove, rename, inode replacement, size or mtime change anywhere inside the
+  target, retained or not, changes the fingerprint. Equality is hash-based; a
+  per-entry difference report is not produced.
 
 ## Methods
 
@@ -98,9 +113,9 @@ require separate review/confirmation; unsupported selections never expand the pl
 returns native progress; `cleanup_cancel` requests stopping pending work. Only the
 local main window receives these scoped commands. There is no path/command endpoint.
 
-Whole target subtrees are compared to scan observations and exact plan metadata,
-including native identities/types, file sizes, modification/ctime nanoseconds,
-ancestor identities and recognizer evidence. Interior symlinks are observed without
+Whole target subtrees are compared through the fingerprint above against the scan
+measurement and exact plan metadata, plus ancestor identities and stamped recognizer
+evidence (native identities, sizes, modification/ctime nanoseconds). Interior symlinks are observed without
 following them and carried as links by Trash; target/ancestor symlinks cannot redirect
 validation. Protected or incompletely measured descendants block cleanup. Exclusion
 or registration changes cannot grant old-plan authority. Shared aliases remain

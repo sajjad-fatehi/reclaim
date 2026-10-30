@@ -89,11 +89,9 @@ impl CleanupService {
                 } => {
                     let details = scanner.inspect(*generation, finding_id)?;
                     let mut item = scanner.with_terminal_scan(*generation, |data| {
-                        let finding = data
-                            .records
-                            .iter()
-                            .find(|record| record.finding.id == *finding_id)
-                            .ok_or(ErrorCode::InvalidRequest)?;
+                        let finding = crate::scan::explore::resolve(data, finding_id)
+                            .map(|index| &data.records[index])
+                            .map_err(|_| ErrorCode::InvalidRequest)?;
                         let artifact = data
                             .recognition
                             .findings
