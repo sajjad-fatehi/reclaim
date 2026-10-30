@@ -36,11 +36,14 @@ export function fixtureProgress(
     terminalIssue: null,
     logicalBytes: '5',
     allocatedBytes: '4096',
+    retention: { nodes: 2, thresholdBytes: '1048576', budgetReached: false },
+    sharingUntracked: false,
     volumes: [
       {
         volume: fixtureLocation.volume,
         scopeLogicalBytes: '5',
         scopeAllocatedBytes: '4096',
+        categories: [],
         unscannedOrUnexplainedBytes: '595904',
       },
     ],
@@ -61,6 +64,11 @@ export function fixtureFindings(generation = 1): Finding[] {
       aliasOf: null,
       complete: true,
       issue: null,
+      foldedItems: 0,
+      foldedLogicalBytes: '0',
+      foldedAllocatedBytes: '0',
+      descendantItems: 0,
+      detail: 'full',
     },
     {
       id: `${generation}:1`,
@@ -75,6 +83,11 @@ export function fixtureFindings(generation = 1): Finding[] {
       aliasOf: null,
       complete: true,
       issue: null,
+      foldedItems: 0,
+      foldedLogicalBytes: '0',
+      foldedAllocatedBytes: '0',
+      descendantItems: 0,
+      detail: 'full',
     },
   ];
 }
@@ -106,6 +119,37 @@ export function createFixtureApi(): ScanApi {
     },
     start: async () => fixtureProgress('running', ++generation),
     current: async () => ({ scope: null, progress: null }),
+    status: async (currentGeneration) =>
+      fixtureProgress('complete', currentGeneration),
+    summary: async (currentGeneration) => {
+      const findings = fixtureFindings(currentGeneration);
+      return {
+        generation: currentGeneration,
+        progress: fixtureProgress('complete', currentGeneration),
+        roots: findings.slice(0, 1),
+        topLevel: findings.slice(1),
+        topFiles: [],
+        issues: [],
+      };
+    },
+    children: async (currentGeneration, parentId, _cursor, sort) => ({
+      generation: currentGeneration,
+      parentId,
+      sort,
+      total: 0,
+      nextCursor: null,
+      findings: [],
+      folded: null,
+    }),
+    search: async (currentGeneration) => ({
+      generation: currentGeneration,
+      total: 0,
+      findings: [],
+    }),
+    findings: async (currentGeneration, ids) =>
+      fixtureFindings(currentGeneration).filter((finding) =>
+        ids.includes(finding.id),
+      ),
     page: async (currentGeneration, offset) => ({
       progress: fixtureProgress('complete', currentGeneration),
       offset,

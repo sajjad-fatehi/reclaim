@@ -35,6 +35,11 @@ function fixtureFindingSet(): Finding[] {
     aliasOf: null,
     complete: true,
     issue: null,
+    foldedItems: 0,
+    foldedLogicalBytes: '0',
+    foldedAllocatedBytes: '0',
+    descendantItems: 0,
+    detail: 'full',
   };
   const files = fileGroups.flatMap(([extension, prefix, sizes]) =>
     sizes.map((size, position): Finding => ({
@@ -79,6 +84,7 @@ function progressFor(
         volume: fixtureVolume,
         scopeLogicalBytes: String(measured),
         scopeAllocatedBytes: String(measured),
+        categories: [],
         unscannedOrUnexplainedBytes: String(unscanned),
       },
     ],
@@ -161,6 +167,7 @@ function createOverviewApi(state: FixtureState): ScanApi {
         volume: fixtureVolume,
         scopeLogicalBytes: String(firstMeasured),
         scopeAllocatedBytes: String(firstMeasured),
+        categories: [],
         unscannedOrUnexplainedBytes: String(
           BigInt(fixtureVolume.totalBytes) -
             BigInt(fixtureVolume.freeBytes) -
@@ -171,6 +178,7 @@ function createOverviewApi(state: FixtureState): ScanApi {
         volume: secondVolume,
         scopeLogicalBytes: String(secondMeasured),
         scopeAllocatedBytes: String(secondMeasured),
+        categories: [],
         unscannedOrUnexplainedBytes: String(
           BigInt(secondVolume.totalBytes) -
             BigInt(secondVolume.freeBytes) -

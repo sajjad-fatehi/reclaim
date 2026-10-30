@@ -82,15 +82,6 @@ pub struct Locations {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Page {
-    pub progress: Progress,
-    pub offset: usize,
-    pub next_offset: Option<usize>,
-    pub findings: Vec<Finding>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RecognitionPage {
     pub generation: u32,
     pub finished: bool,
@@ -109,6 +100,7 @@ struct Session {
     data: Arc<Mutex<ScanData>>,
     cancel: Arc<AtomicBool>,
     last_read: Option<Instant>,
+    index: Option<browse::ChildIndex>,
 }
 
 #[derive(Default)]
@@ -136,6 +128,13 @@ impl ScanService {
             retention: scan::RetentionPolicy::exhaustive(scan::RETENTION_NODE_BUDGET),
         }
     }
+}
+
+/// Digits only, no sign or leading zeros: the exact text this service would have issued.
+pub(crate) fn canonical_number(text: &str) -> Option<u64> {
+    text.parse::<u64>()
+        .ok()
+        .filter(|number| number.to_string() == text)
 }
 
 fn token() -> String {
@@ -350,6 +349,7 @@ impl ScanService {
             data: data.clone(),
             cancel: cancel.clone(),
             last_read: None,
+            index: None,
         });
         let failure_data = data.clone();
         let retention = self.retention;
@@ -377,29 +377,6 @@ impl ScanService {
         throttle(session)?;
         let progress = lock(&session.data).progress.clone();
         Ok(progress)
-    }
-
-    pub fn page(&self, generation: u32, offset: usize, limit: usize) -> BoundaryResult<Page> {
-        if limit == 0 || limit > scan::MAX_PAGE {
-            return Err(ErrorCode::InvalidRequest.into());
-        }
-        let mut authority = lock(&self.authority);
-        let session = authority.session(generation)?;
-        throttle(session)?;
-        let data = lock(&session.data);
-        if offset > data.records.len() {
-            return Err(ErrorCode::InvalidRequest.into());
-        }
-        let end = offset.saturating_add(limit).min(data.records.len());
-        Ok(Page {
-            progress: data.progress.clone(),
-            offset,
-            next_offset: (end < data.records.len()).then_some(end),
-            findings: data.records[offset..end]
-                .iter()
-                .map(|record| record.finding.clone())
-                .collect(),
-        })
     }
 
     pub fn cancel(&self, generation: u32) -> BoundaryResult<Progress> {
@@ -568,18 +545,6 @@ pub async fn scan_status<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn scan_page<R: Runtime>(
-    window: WebviewWindow<R>,
-    state: State<'_, Arc<ScanService>>,
-    generation: u32,
-    offset: usize,
-    limit: usize,
-) -> BoundaryResult<Page> {
-    authorize(&window)?;
-    state.page(generation, offset, limit)
-}
-
-#[tauri::command]
 pub async fn scan_cancel<R: Runtime>(
     window: WebviewWindow<R>,
     state: State<'_, Arc<ScanService>>,
@@ -716,30 +681,40 @@ mod tests {
         );
         assert_eq!(
             service
-                .page(progress.generation, 0, 201)
+                .children(progress.generation, None, None, 201, browse::Sort::Size)
                 .err()
                 .unwrap()
                 .code,
             ErrorCode::InvalidRequest
         );
-        let first = service.page(progress.generation, 0, 1).unwrap();
-        assert_eq!(first.findings.len(), 1);
-        assert_eq!(first.next_offset, Some(1));
+        let roots = service
+            .children(progress.generation, None, None, 1, browse::Sort::Size)
+            .unwrap();
+        assert_eq!(roots.findings.len(), 1);
+        assert_eq!(roots.next_cursor, None);
         assert_eq!(
             service.status(progress.generation).unwrap_err().code,
             ErrorCode::RateLimited
         );
         lock(&service.authority).session.as_mut().unwrap().last_read = None;
-        let second = service.page(progress.generation, 1, 200).unwrap();
-        assert_eq!(second.findings.len(), 1);
-        assert_eq!(second.next_offset, None);
+        let files = service
+            .children(
+                progress.generation,
+                Some(&roots.findings[0].id),
+                None,
+                200,
+                browse::Sort::Size,
+            )
+            .unwrap();
+        assert_eq!(files.findings.len(), 1);
+        assert_eq!(files.next_cursor, None);
         service.start(&scope.id).unwrap();
         assert_eq!(
             service.cancel(progress.generation).unwrap_err().code,
             ErrorCode::StaleGeneration
         );
         assert_eq!(
-            service.page(progress.generation, 0, 1).err().unwrap().code,
+            service.summary(progress.generation).err().unwrap().code,
             ErrorCode::StaleGeneration
         );
         terminal(&service);
@@ -755,6 +730,7 @@ mod tests {
             data: data.clone(),
             cancel: Arc::new(AtomicBool::new(false)),
             last_read: None,
+            index: None,
         });
         assert_eq!(service.start(&scope.id).unwrap_err().code, ErrorCode::Busy);
         assert_eq!(
@@ -1065,7 +1041,10 @@ mod tests {
                 scan_start,
                 scan_current,
                 scan_status,
-                scan_page,
+                browse::scan_summary,
+                browse::scan_children,
+                browse::scan_search,
+                browse::scan_findings,
                 scan_cancel,
                 scan_register_scope,
                 recognition_page,
@@ -1083,17 +1062,81 @@ mod tests {
         let generation = started["generation"].as_u64().unwrap();
         assert_eq!(started["logicalBytes"], "0");
         terminal(&service);
-        let page = ipc(
+        let summary = ipc(&window, "scan_summary", json!({"generation": generation})).unwrap();
+        assert_eq!(summary["progress"]["logicalBytes"], "5");
+        assert_eq!(summary["roots"].as_array().unwrap().len(), 1);
+        let root_id = summary["roots"][0]["id"].as_str().unwrap().to_owned();
+        let read = |service: &ScanService| {
+            lock(&service.authority).session.as_mut().unwrap().last_read = None
+        };
+        read(&service);
+        let children = ipc(
             &window,
-            "scan_page",
-            json!({"generation": generation, "offset": 0, "limit": 200}),
+            "scan_children",
+            json!({"generation": generation, "parentId": root_id, "cursor": null, "limit": 200, "sort": "size"}),
         )
         .unwrap();
-        assert_eq!(page["progress"]["logicalBytes"], "5");
-        assert_eq!(page["findings"].as_array().unwrap().len(), 2);
+        assert_eq!(children["findings"].as_array().unwrap().len(), 1);
+        assert_eq!(children["total"], 1);
+        for forged in [
+            json!({"generation": generation, "parentId": "/outside", "cursor": null, "limit": 10, "sort": "size"}),
+            json!({"generation": generation, "parentId": 7, "cursor": null, "limit": 10, "sort": "size"}),
+            json!({"generation": generation, "parentId": root_id, "cursor": "forged", "limit": 10, "sort": "size"}),
+            json!({"generation": generation, "parentId": root_id, "cursor": null, "limit": 201, "sort": "size"}),
+            json!({"generation": generation, "parentId": root_id, "cursor": null, "limit": 10, "sort": "path"}),
+            json!({"generation": generation + 1, "parentId": null, "cursor": null, "limit": 10, "sort": "size"}),
+        ] {
+            read(&service);
+            assert!(ipc(&window, "scan_children", forged).is_err());
+        }
+        read(&service);
+        let stale = ipc(
+            &window,
+            "scan_summary",
+            json!({"generation": generation + 1}),
+        )
+        .unwrap_err();
+        assert_eq!(stale["code"], "stale_generation");
+        read(&service);
+        let found = ipc(
+            &window,
+            "scan_search",
+            json!({"generation": generation, "query": "fixture", "limit": 10}),
+        )
+        .unwrap();
+        assert_eq!(found["total"], 1);
+        read(&service);
+        assert!(ipc(
+            &window,
+            "scan_findings",
+            json!({"generation": generation, "ids": ["/outside"]})
+        )
+        .is_err());
+        read(&service);
+        let resolved = ipc(
+            &window,
+            "scan_findings",
+            json!({"generation": generation, "ids": [root_id]}),
+        )
+        .unwrap();
+        assert_eq!(resolved.as_array().unwrap().len(), 1);
+        read(&service);
+        assert_eq!(
+            ipc(&window, "scan_summary", json!({"generation": generation})).unwrap()["progress"]
+                ["retention"]["budgetReached"],
+            false
+        );
         let other = tauri::WebviewWindowBuilder::new(&app, "other", Default::default())
             .build()
             .unwrap();
+        read(&service);
+        assert!(ipc(&other, "scan_summary", json!({"generation": generation})).is_err());
+        assert!(ipc(
+            &other,
+            "scan_search",
+            json!({"generation": generation, "query": "a", "limit": 1})
+        )
+        .is_err());
         assert!(ipc(&other, "scan_cancel", json!({"generation": generation})).is_err());
         assert!(ipc(
             &other,
@@ -1146,6 +1189,7 @@ mod tests {
     }
 }
 
+pub mod browse;
 pub(crate) mod cleanup;
 pub mod explore;
 
