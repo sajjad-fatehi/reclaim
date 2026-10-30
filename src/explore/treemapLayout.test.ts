@@ -18,9 +18,21 @@ test('treemap areas are proportional, fill the canvas and skip unmeasured entrie
     'c',
   ]);
   const tiles = layoutTreemap(findings);
-  expect(tiles.map((tile) => tile.finding.id)).toEqual(['a', 'b', 'c']);
+  expect(tiles.map((tile) => tile.finding?.id)).toEqual(['a', 'b', 'c']);
   const areas = tiles.map((tile) => (tile.width * tile.height) / 100);
   expect(areas.reduce((sum, area) => sum + area, 0)).toBeCloseTo(100, 5);
   expect(areas[0]).toBeCloseTo(60, 5);
   expect(areas[2]).toBeCloseTo(10, 5);
+});
+
+test('folded remainder gets a proportional tile without a finding', () => {
+  const [root] = fixtureFindings();
+  if (!root) throw new Error('Missing synthetic fixture');
+  const tiles = layoutTreemap(
+    [{ ...root, id: 'a', allocatedBytes: '750' }],
+    '250',
+  );
+  const folded = tiles.find((tile) => tile.finding === null);
+  expect(tiles).toHaveLength(2);
+  expect((folded!.width * folded!.height) / 100).toBeCloseTo(25, 5);
 });

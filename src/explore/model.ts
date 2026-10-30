@@ -1,105 +1,92 @@
-import type { Finding } from '../scan/contract';
+import type { ChildSort, Finding, FoldedRow } from '../scan/contract';
 
 export const pageSize = 50;
-export type SortKey = 'name' | 'size' | 'kind' | 'status';
-export interface BrowseOptions {
-  directoryId: string | null;
-  query: string;
-  sort: SortKey;
-  descending: boolean;
-  findingIds: ReadonlySet<string> | null;
-}
-export interface FindingIndex {
-  byId: Map<string, Finding>;
-  paths: Map<string, string>;
-  children: Map<string | null, Finding[]>;
-}
-export function indexFindings(findings: Finding[]): FindingIndex {
-  const byId = new Map(findings.map((finding) => [finding.id, finding]));
-  const paths = new Map<string, string>();
-  const children = new Map<string | null, Finding[]>();
-  for (const finding of findings) {
-    const siblings = children.get(finding.parentId) ?? [];
-    siblings.push(finding);
-    children.set(finding.parentId, siblings);
-    const chain: string[] = [];
-    let current: Finding | undefined = finding;
-    const visited = new Set<string>();
-    while (current && !visited.has(current.id)) {
-      visited.add(current.id);
-      chain.push(current.displayName);
-      current = current.parentId ? byId.get(current.parentId) : undefined;
-    }
-    paths.set(finding.id, chain.reverse().join('/').replace(/^\/\//, '/'));
-  }
-  return { byId, paths, children };
-}
-export function ancestors(
-  index: FindingIndex,
-  findingId: string | null,
-): Finding[] {
-  const chain: Finding[] = [];
-  const visited = new Set<string>();
-  let current = findingId ? index.byId.get(findingId) : undefined;
-  while (current && !visited.has(current.id)) {
-    visited.add(current.id);
-    chain.push(current);
-    current = current.parentId ? index.byId.get(current.parentId) : undefined;
-  }
-  return chain.reverse();
-}
+export const searchDebounceMs = 250;
+export const searchLimit = 200;
+export type SortKey = ChildSort;
+export const sortLabels: Record<SortKey, string> = {
+  size: 'Allocated size',
+  name: 'Name',
+  modified: 'Modified',
+};
+export const sortDirections: Record<SortKey, 'ascending' | 'descending'> = {
+  size: 'descending',
+  name: 'ascending',
+  modified: 'descending',
+};
+
 export function measurementStatus(finding: Finding): string {
   if (finding.issue) return finding.issue.replaceAll('_', ' ');
-  if (finding.aliasOf) return 'Shared identity · counted once';
+  if (finding.aliasOf) return 'Shared storage · counted once';
   return finding.complete ? 'Measured' : 'Partial measurement';
 }
-export function browse(index: FindingIndex, options: BrowseOptions): Finding[] {
-  const query = options.query.trim().toLocaleLowerCase();
-  const recursive = query.length > 0 || options.findingIds !== null;
-  const candidates: Finding[] = [];
-  const pending = [...(index.children.get(options.directoryId) ?? [])];
-  const visited = new Set<string>();
-  while (pending.length > 0) {
-    const finding = pending.pop();
-    if (!finding || visited.has(finding.id)) continue;
-    visited.add(finding.id);
-    if (recursive && finding.kind === 'directory') {
-      for (const child of index.children.get(finding.id) ?? [])
-        pending.push(child);
-    }
-    if (options.findingIds && !options.findingIds.has(finding.id)) continue;
-    if (
-      query &&
-      !(index.paths.get(finding.id) ?? finding.displayName)
-        .toLocaleLowerCase()
-        .includes(query)
-    )
-      continue;
-    candidates.push(finding);
-  }
-  return candidates.sort((left, right) => {
+export function listedItems(finding: Finding): number {
+  return finding.descendantItems - finding.foldedItems;
+}
+export function isSummarized(finding: Finding): boolean {
+  return finding.kind === 'directory' && finding.detail === 'summarized';
+}
+export function foldedLabel(folded: FoldedRow, formatted: string): string {
+  return `${folded.items.toLocaleString('en-US')} smaller ${folded.items === 1 ? 'item' : 'items'} · ${formatted} (not listed)`;
+}
+export function hasFoldedItems(folded: FoldedRow | null): folded is FoldedRow {
+  return folded !== null && folded.items > 0;
+}
+
+function compareBytes(left: string, right: string): number {
+  const leftValue = BigInt(left);
+  const rightValue = BigInt(right);
+  return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0;
+}
+/** Mirrors the native sort orders for flat investigation lists, which are resolved by id. */
+export function sortFindings(findings: Finding[], sort: SortKey): Finding[] {
+  return [...findings].sort((left, right) => {
     let comparison: number;
-    switch (options.sort) {
-      case 'size': {
-        const leftSize = BigInt(left.allocatedBytes);
-        const rightSize = BigInt(right.allocatedBytes);
-        comparison = leftSize < rightSize ? -1 : leftSize > rightSize ? 1 : 0;
+    switch (sort) {
+      case 'size':
+        comparison = compareBytes(right.allocatedBytes, left.allocatedBytes);
         break;
-      }
-      case 'kind':
-        comparison = left.kind.localeCompare(right.kind);
-        break;
-      case 'status':
-        comparison = measurementStatus(left).localeCompare(
-          measurementStatus(right),
-        );
+      case 'modified':
+        comparison = (right.modifiedAtMs ?? -1) - (left.modifiedAtMs ?? -1);
         break;
       default:
-        comparison = left.displayName.localeCompare(right.displayName);
+        comparison = left.displayName
+          .toLocaleLowerCase()
+          .localeCompare(right.displayName.toLocaleLowerCase());
     }
-    return (
-      (options.descending ? -comparison : comparison) ||
-      left.id.localeCompare(right.id)
-    );
+    return comparison || left.id.localeCompare(right.id);
   });
+}
+
+export const ancestorDepthLimit = 4;
+export interface Location {
+  /** Slash-joined names from the nearest resolved ancestors down to the item; prefixed with an ellipsis when truncated. */
+  path: string;
+  /** Next ancestor id still to resolve, or null when the chain is complete or bounded. */
+  missingId: string | null;
+}
+/** Builds a readable location from already-resolved findings, bounded to `ancestorDepthLimit` ancestors. */
+export function locationOf(
+  findings: ReadonlyMap<string, Finding>,
+  findingId: string,
+): Location | null {
+  let current = findings.get(findingId);
+  if (!current) return null;
+  const names = [current.displayName];
+  const visited = new Set([current.id]);
+  for (let depth = 0; depth < ancestorDepthLimit; depth += 1) {
+    if (current.parentId === null)
+      return { path: names.reverse().join('/'), missingId: null };
+    const parent = findings.get(current.parentId);
+    if (!parent)
+      return {
+        path: `…/${names.reverse().join('/')}`,
+        missingId: current.parentId,
+      };
+    if (visited.has(parent.id)) break;
+    visited.add(parent.id);
+    names.push(parent.displayName);
+    current = parent;
+  }
+  return { path: `…/${names.reverse().join('/')}`, missingId: null };
 }

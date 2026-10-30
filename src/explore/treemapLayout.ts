@@ -1,14 +1,15 @@
 import type { Finding } from '../scan/contract';
 
 export interface TreemapTile {
-  finding: Finding;
+  /** `null` is the folded remainder: bytes measured but not listed. */
+  finding: Finding | null;
   left: number;
   top: number;
   width: number;
   height: number;
 }
 interface Weighted {
-  finding: Finding;
+  finding: Finding | null;
   area: number;
 }
 interface Rectangle {
@@ -79,17 +80,24 @@ function placeRow(
 /**
  * Squarified treemap. Tile area is proportional to allocated size within the
  * drawn set. Output is in percent of a 2:1 canvas. Only drawable findings are
- * laid out; callers must list the rest as not drawn.
+ * laid out, plus an optional folded remainder tile (`finding: null`); callers
+ * must list the rest as not drawn.
  */
-export function layoutTreemap(findings: Finding[]): TreemapTile[] {
-  const drawable = findings
+export function layoutTreemap(
+  findings: Finding[],
+  foldedAllocatedBytes = '0',
+): TreemapTile[] {
+  const weights: { finding: Finding | null; weight: number }[] = findings
     .filter(isDrawable)
-    .sort((left, right) => weightOf(right) - weightOf(left));
-  const total = drawable.reduce((sum, finding) => sum + weightOf(finding), 0);
+    .map((finding) => ({ finding, weight: weightOf(finding) }));
+  const foldedWeight = Number(BigInt(foldedAllocatedBytes));
+  if (foldedWeight > 0) weights.push({ finding: null, weight: foldedWeight });
+  weights.sort((left, right) => right.weight - left.weight);
+  const total = weights.reduce((sum, item) => sum + item.weight, 0);
   if (total === 0) return [];
-  const queue: Weighted[] = drawable.map((finding) => ({
+  const queue: Weighted[] = weights.map(({ finding, weight }) => ({
     finding,
-    area: (weightOf(finding) / total) * layoutWidth * layoutHeight,
+    area: (weight / total) * layoutWidth * layoutHeight,
   }));
   const tiles: TreemapTile[] = [];
   let rectangle: Rectangle = {

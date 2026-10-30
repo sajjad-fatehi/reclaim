@@ -1,7 +1,7 @@
 import { Folder } from '@phosphor-icons/react/Folder';
 import { FolderOpen } from '@phosphor-icons/react/FolderOpen';
 import { File } from '@phosphor-icons/react/File';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { useScanSession } from '../scan/useScanSession';
 import type { ScanSnapshot } from '../scan/session';
@@ -10,29 +10,34 @@ import { EmptyState, Notice, ResultTable, Toolbar } from '../shell/primitives';
 import { ItemInspector } from './ItemInspector';
 import { Treemap } from './Treemap';
 import {
-  ancestors,
-  browse,
-  indexFindings,
+  foldedLabel,
+  hasFoldedItems,
   measurementStatus,
   pageSize,
+  searchDebounceMs,
+  sortDirections,
+  sortLabels,
 } from './model';
 import type { SortKey } from './model';
+import { useListing } from './useListing';
+import type { ListingSource } from './useListing';
+import { useResolvedFindings } from './useResolvedFindings';
+import type { Finding } from '../scan/contract';
 import type { InspectionApi } from './contract';
 
 interface ViewState {
   query: string;
   sort: SortKey;
-  descending: boolean;
   page: number;
   scroll: number;
 }
 const initialView: ViewState = {
   query: '',
   sort: 'size',
-  descending: true,
   page: 0,
   scroll: 0,
 };
+
 export function Explore({
   api,
   onOverview,
@@ -67,6 +72,14 @@ export function Explore({
     />
   );
 }
+function useDebounced(value: string, delay: number): string {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
 function ExploreSnapshot({
   snapshot,
   active,
@@ -81,10 +94,12 @@ function ExploreSnapshot({
   onOverview: () => void;
 }): ReactElement {
   const { state, session } = useScanSession();
-  const [directories, setDirectories] = useState<Map<string, string | null>>(
+  const generation = snapshot.progress.generation;
+  const [trails, setTrails] = useState<Map<string, Finding[]>>(() => new Map());
+  const [selections, setSelections] = useState<Map<string, string | null>>(
     () => new Map(),
   );
-  const [selections, setSelections] = useState<Map<string, string | null>>(
+  const [selected, setSelected] = useState<Map<string, Finding>>(
     () => new Map(),
   );
   const [notice, setNotice] = useState('');
@@ -93,20 +108,16 @@ function ExploreSnapshot({
   const [views, setViews] = useState<Map<string, ViewState>>(() => new Map());
   const region = useRef<HTMLDivElement>(null);
   const searchReference = useRef<HTMLInputElement>(null);
-  const index = useMemo(
-    () => indexFindings(snapshot.findings),
-    [snapshot.findings],
-  );
   const investigation =
-    state.investigation?.generation === snapshot.progress.generation
-      ? state.investigation
-      : null;
+    state.investigation?.generation === generation ? state.investigation : null;
   const investigationKey = investigation?.category ?? 'browse';
   const selectedId =
     investigation && 'selectedId' in investigation
       ? (investigation.selectedId ?? null)
       : (selections.get(investigationKey) ?? null);
-  function setSelectedId(findingId: string | null): void {
+  function select(findingId: string | null, finding?: Finding): void {
+    if (finding)
+      setSelected((current) => new Map(current).set(finding.id, finding));
     if (investigation && 'selectedId' in investigation) {
       session.investigate({ ...investigation, selectedId: findingId });
       return;
@@ -115,28 +126,64 @@ function ExploreSnapshot({
       new Map(current).set(investigationKey, findingId),
     );
   }
-  const directoryId = directories.get(investigationKey) ?? null;
-  const findingIds = useMemo(
-    () => (investigation ? new Set(investigation.findingIds) : null),
-    [investigation],
+  const trail = useMemo(
+    () => trails.get(investigationKey) ?? [],
+    [trails, investigationKey],
   );
+  const directory = trail[trail.length - 1] ?? null;
+  const directoryId = directory?.id ?? null;
   const scopeKey = `${investigation?.category ?? ''}:${directoryId ?? 'roots'}`;
   const view = views.get(scopeKey) ?? initialView;
-  const rows = useMemo(
-    () =>
-      browse(index, {
-        directoryId,
-        query: view.query,
+  const typed = view.query.trim();
+  const query = useDebounced(typed, searchDebounceMs);
+  const searching = typed.length > 0;
+  const settled = snapshot.settled;
+  const source = useMemo<ListingSource | null>(() => {
+    if (!settled) return null;
+    if (searching) return query === typed ? { kind: 'search', query } : null;
+    if (investigation && directoryId === null)
+      return {
+        kind: 'findings',
+        ids: investigation.findingIds,
         sort: view.sort,
-        descending: view.descending,
-        findingIds,
-      }),
-    [index, directoryId, view.query, view.sort, view.descending, findingIds],
+      };
+    return { kind: 'children', parentId: directoryId, sort: view.sort };
+  }, [settled, searching, query, typed, investigation, directoryId, view.sort]);
+  const scanApi = session.api;
+  const { listing, loading, failed, loadMore, retry } = useListing(
+    scanApi,
+    generation,
+    source,
   );
-  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const waitingForQuery = searching && source === null;
+  const rows = listing?.rows ?? [];
+  const isSearch = source?.kind === 'search';
+  const totalRows = isSearch ? rows.length : (listing?.total ?? 0);
+  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
   const page = Math.min(view.page, pageCount - 1);
   const visibleRows = rows.slice(page * pageSize, (page + 1) * pageSize);
-  const selection = selectedId ? (index.byId.get(selectedId) ?? null) : null;
+  const onLastPage = page + 1 >= pageCount && !listing?.nextCursor;
+  const folded =
+    !isSearch && onLastPage && hasFoldedItems(listing?.folded ?? null)
+      ? (listing?.folded ?? null)
+      : null;
+  const resolvedSelection = useResolvedFindings(
+    scanApi,
+    generation,
+    selectedId && !selected.has(selectedId) ? [selectedId] : [],
+    settled,
+  );
+  const selection = selectedId
+    ? (selected.get(selectedId) ??
+      resolvedSelection.get(selectedId) ??
+      rows.find((row) => row.id === selectedId) ??
+      null)
+    : null;
+
+  useEffect(() => {
+    if (listing?.nextCursor && !loading && rows.length < (page + 1) * pageSize)
+      loadMore();
+  }, [listing, loading, rows.length, page, loadMore]);
   function editView(edits: Partial<ViewState>): void {
     setViews((current) =>
       new Map(current).set(scopeKey, {
@@ -149,23 +196,21 @@ function ExploreSnapshot({
     const table = region.current?.querySelector('.table-scroll');
     if (table) table.scrollTop = views.get(scopeKey)?.scroll ?? 0;
   }, [scopeKey, views]);
-  function navigate(findingId: string | null): void {
-    setDirectories((current) =>
-      new Map(current).set(investigationKey, findingId),
-    );
+  function setTrail(next: Finding[]): void {
+    setTrails((current) => new Map(current).set(investigationKey, next));
     setNotice('');
   }
+  function openFolder(finding: Finding): void {
+    setTrail([...trail, finding]);
+  }
+  function goUp(): void {
+    setTrail(trail.slice(0, -1));
+  }
   function inspectRelated(findingId: string): void {
-    if (!index.byId.has(findingId)) {
-      setNotice(
-        'Related item not loaded or outside this scan. Wait for measurements or scan again.',
-      );
-      return;
-    }
-    setSelectedId(findingId);
     setNotice(
       'Related item opened within the same scan; breadcrumb and filters retained.',
     );
+    select(findingId);
   }
   function handleBrowseKeys(event: KeyboardEvent<HTMLElement>): void {
     const target = event.target;
@@ -186,7 +231,7 @@ function ExploreSnapshot({
       if (!next) return;
       event.preventDefault();
       setQuietSelection(true);
-      setSelectedId(next.id);
+      select(next.id, next);
       Array.from(
         event.currentTarget.querySelectorAll<HTMLElement>(
           'button[data-finding-id]',
@@ -198,67 +243,62 @@ function ExploreSnapshot({
     }
     if (event.key === 'ArrowRight' && selection?.kind === 'directory') {
       event.preventDefault();
-      navigate(selection.id);
+      openFolder(selection);
       return;
     }
     if (event.key === 'ArrowLeft' && directoryId !== null) {
       event.preventDefault();
-      navigate(index.byId.get(directoryId)?.parentId ?? null);
+      goUp();
     }
   }
   function sortBy(sort: SortKey): void {
-    editView({
-      sort,
-      descending: view.sort === sort ? !view.descending : false,
-      page: 0,
-      scroll: 0,
-    });
+    editView({ sort, page: 0, scroll: 0 });
   }
-  function sortHeader(
-    sort: SortKey,
-    label: string,
-    numeric = false,
-  ): ReactElement {
+  function sortHeader(sort: SortKey, numeric = false): ReactElement {
     return (
       <th
         scope="col"
         className={numeric ? 'numeric' : undefined}
         aria-sort={
-          view.sort === sort
-            ? view.descending
-              ? 'descending'
-              : 'ascending'
-            : 'none'
+          !isSearch && view.sort === sort ? sortDirections[sort] : 'none'
         }
       >
-        <button onClick={() => sortBy(sort)}>
-          {label}
-          {view.sort === sort ? (view.descending ? ' ↓' : ' ↑') : ''}
+        <button disabled={isSearch} onClick={() => sortBy(sort)}>
+          {sortLabels[sort]}
+          {!isSearch && view.sort === sort
+            ? sortDirections[sort] === 'descending'
+              ? ' ↓'
+              : ' ↑'
+            : ''}
         </button>
       </th>
     );
   }
-  function selectFinding(findingId: string): void {
+  function selectFinding(finding: Finding): void {
     setQuietSelection(false);
-    setSelectedId(findingId);
+    select(finding.id, finding);
   }
-  const directoryName = directoryId
-    ? (index.byId.get(directoryId)?.displayName ?? 'Folder')
-    : 'Scan locations';
+  const directoryName = directory?.displayName ?? 'Scan locations';
+  const foldedText = folded
+    ? foldedLabel(folded, formatBytes(folded.allocatedBytes))
+    : '';
+  const summary = isSearch
+    ? `${listing?.total ?? 0} listed matches · showing the largest ${rows.length}`
+    : `${totalRows} listed entries`;
   return (
     <div className="explore-layout">
       <div className="explore-content" onKeyDown={handleBrowseKeys}>
         <nav aria-label="Folder breadcrumbs" className="breadcrumbs">
           <button
-            onClick={() => navigate(null)}
+            onClick={() => setTrail([])}
             aria-current={directoryId === null ? 'location' : undefined}
           >
             Scan locations
           </button>
-          {ancestors(index, directoryId).map((finding) => (
+          {trail.map((finding, position) => (
             <button
               key={finding.id}
-              onClick={() => navigate(finding.id)}
+              onClick={() => setTrail(trail.slice(0, position + 1))}
               aria-current={finding.id === directoryId ? 'location' : undefined}
               className="path-text"
             >
@@ -270,7 +310,7 @@ function ExploreSnapshot({
           <div>
             <h2 className="path-text">{directoryName}</h2>
             <p className="secondary">
-              {rows.length} entries · hidden shown
+              {summary} · hidden shown
               {layout === 'treemap' ? ' · tile area = allocated size' : ''}
             </p>
           </div>
@@ -290,28 +330,20 @@ function ExploreSnapshot({
           </div>
         </div>
         <Toolbar label="Explore filters">
-          <button
-            disabled={directoryId === null}
-            onClick={() =>
-              navigate(
-                directoryId
-                  ? (index.byId.get(directoryId)?.parentId ?? null)
-                  : null,
-              )
-            }
-          >
+          <button disabled={directoryId === null} onClick={goUp}>
             Up one folder
           </button>
           <label className="explore-search">
-            Search within this scope
+            Search listed items
             <input
               ref={searchReference}
               type="search"
+              maxLength={256}
               value={view.query}
               onChange={(event) =>
                 editView({ query: event.target.value, page: 0, scroll: 0 })
               }
-              placeholder="Name or path, including hidden files"
+              placeholder="Name of a listed item, including hidden files"
             />
           </label>
           <button
@@ -327,17 +359,19 @@ function ExploreSnapshot({
         </Toolbar>
         {investigation && (
           <Notice>
-            {investigation.category} · filtered scan findings. Opening folders
-            retains this filter; Reset filters restores all findings.
+            {investigation.category} · filtered scan findings. Opening a folder
+            browses it unfiltered; Reset filters restores all findings.
           </Notice>
         )}
         <p className="secondary explore-caveat">
           Allocated contribution · directory totals include descendants; shared
-          identities count once. Not guaranteed recoverable space. Search
-          includes descendants; without filters, direct children shown. Hidden
-          entries included. Arrow keys move the selection; Right opens a folder,
-          Left goes up. Size does not imply recoverable space and age does not
-          imply disuse.
+          identities count once. Not guaranteed recoverable space.{' '}
+          {searching
+            ? 'Searches listed items across the whole scan only; smaller items summarized into folders are not searched, so results are never a complete count. '
+            : 'Smaller items inside a folder may be summarized in a "not listed" row. '}
+          Hidden entries included. Arrow keys move the selection; Right opens a
+          folder, Left goes up. Size does not imply recoverable space and age
+          does not imply disuse.
         </p>
         {(stale ||
           !snapshot.settled ||
@@ -351,12 +385,21 @@ function ExploreSnapshot({
         )}
         <p role="status" className="secondary">
           {notice ||
-            `${rows.length} results · page ${page + 1} of ${pageCount} · at most ${pageSize} rows rendered`}
+            (failed
+              ? ''
+              : loading || waitingForQuery
+                ? 'Loading listed items…'
+                : `${summary} · page ${page + 1} of ${pageCount} · at most ${pageSize} rows rendered`)}
         </p>
+        {failed && (
+          <Notice>
+            Listing unavailable for this scope. Retained measurements are
+            unchanged. <button onClick={retry}>Retry</button>
+          </Notice>
+        )}
         {selectedId && !selection && (
           <Notice>
-            Selected item unavailable in this snapshot. Retained ID:{' '}
-            {selectedId}. Scan again to refresh.
+            Selected item unavailable in this snapshot. Scan again to refresh.
           </Notice>
         )}
         <div
@@ -373,10 +416,11 @@ function ExploreSnapshot({
           <ResultTable caption="Measured folders and files">
             <thead>
               <tr>
-                {sortHeader('name', 'Name')}
-                {sortHeader('size', 'Allocated size', true)}
-                {sortHeader('kind', 'Type')}
-                {sortHeader('status', 'Status')}
+                {sortHeader('name')}
+                {sortHeader('size', true)}
+                <th scope="col">Type</th>
+                {sortHeader('modified')}
+                <th scope="col">Status</th>
                 <th scope="col">Actions</th>
               </tr>
             </thead>
@@ -385,7 +429,7 @@ function ExploreSnapshot({
                 <tr
                   key={finding.id}
                   data-selected={selectedId === finding.id ? 'true' : undefined}
-                  onClick={() => selectFinding(finding.id)}
+                  onClick={() => selectFinding(finding)}
                 >
                   <th scope="row">
                     <div className="finding-name">
@@ -397,7 +441,9 @@ function ExploreSnapshot({
                       <span className="path-text">{finding.displayName}</span>
                     </div>
                     <span className="secondary finding-path path-text">
-                      {index.paths.get(finding.id)} · {finding.id}
+                      {finding.parentId
+                        ? `In ${listing?.parentNames[finding.parentId] ?? directory?.displayName ?? 'parent folder'}`
+                        : 'Scan location'}
                     </span>
                   </th>
                   <td className="numeric">
@@ -407,6 +453,11 @@ function ExploreSnapshot({
                     )}
                   </td>
                   <td>{finding.kind}</td>
+                  <td>
+                    {finding.modifiedAtMs === null
+                      ? 'Unknown'
+                      : new Date(finding.modifiedAtMs).toLocaleDateString()}
+                  </td>
                   <td>
                     <span
                       className="status-pill"
@@ -421,7 +472,7 @@ function ExploreSnapshot({
                         <button
                           onClick={(event) => {
                             event.stopPropagation();
-                            navigate(finding.id);
+                            openFolder(finding);
                           }}
                           aria-label={`Open folder ${finding.displayName}`}
                         >
@@ -435,7 +486,7 @@ function ExploreSnapshot({
                         onClick={(event) => {
                           event.stopPropagation();
                           event.currentTarget.focus();
-                          selectFinding(finding.id);
+                          selectFinding(finding);
                         }}
                         aria-label={`Inspect ${finding.displayName}`}
                       >
@@ -445,22 +496,34 @@ function ExploreSnapshot({
                   </td>
                 </tr>
               ))}
+              {folded && (
+                <tr className="folded-row" data-folded="true">
+                  <th scope="row">{foldedText}</th>
+                  <td className="numeric">
+                    {formatBytes(folded.allocatedBytes)}
+                  </td>
+                  <td colSpan={4}>
+                    Summarized: measured in the totals, not listed individually
+                  </td>
+                </tr>
+              )}
             </tbody>
           </ResultTable>
         </div>
         {layout === 'treemap' && (
           <Treemap
             findings={visibleRows}
+            folded={folded}
             selectedId={selectedId}
             onSelect={selectFinding}
-            onOpen={navigate}
+            onOpen={openFolder}
           />
         )}
-        {rows.length === 0 && (
+        {listing && rows.length === 0 && !folded && !loading && (
           <p>
-            {snapshot.settled
-              ? 'No matching entries in this scope. Reset filters or go up one folder.'
-              : 'No matching entries yet. Measurements still loading.'}
+            {isSearch
+              ? 'No listed item matches. Smaller items summarized into folders are not searched. Reset filters or go up one folder.'
+              : 'No entries in this scope. Reset filters or go up one folder.'}
           </p>
         )}
         <Toolbar label="Result pages">
@@ -488,9 +551,11 @@ function ExploreSnapshot({
         settled={snapshot.settled}
         focusOnChange={!quietSelection}
         onClose={() => {
-          setSelectedId(null);
-          if (!visibleRows.some((finding) => finding.id === selectedId))
-            searchReference.current?.focus();
+          const wasListed = visibleRows.some(
+            (finding) => finding.id === selectedId,
+          );
+          select(null);
+          if (!wasListed) searchReference.current?.focus();
         }}
         onInspectRelated={inspectRelated}
         api={api}

@@ -91,13 +91,7 @@ function ScanApplicationContent({
             inspectionApi={inspectionApi}
             onOverview={() => setDestination('overview')}
             onExplore={(findingId) => {
-              if (
-                !state.snapshot ||
-                !state.snapshot.findings.some(
-                  (finding) => finding.id === findingId,
-                )
-              )
-                return;
+              if (!state.snapshot) return;
               session.investigate({
                 generation: state.snapshot.progress.generation,
                 category: `Development · ${findingId}`,

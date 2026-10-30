@@ -1579,7 +1579,17 @@ tr[data-selected='true'] .artifact-chip {
     rgb(28 22 38 / 0.14) 6px 8px
   );
 }
-.treemap-tile:hover {
+.treemap-folded {
+  background-color: var(--tile-unknown);
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 6px,
+    rgb(28 22 38 / 0.18) 6px 8px
+  );
+  border-style: dashed;
+  border-color: var(--boundary);
+}
+.treemap-tile:hover:is(button) {
   transform: none;
   box-shadow: var(--shadow-control);
 }
@@ -1588,6 +1598,11 @@ tr[data-selected='true'] .artifact-chip {
   outline-offset: -3px;
   box-shadow: var(--shadow-panel);
   z-index: 1;
+}
+.folded-row th,
+.folded-row td {
+  color: var(--secondary);
+  font-style: italic;
 }
 .treemap-label {
   display: grid;

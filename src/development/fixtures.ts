@@ -7,7 +7,7 @@ import {
   serveScan,
 } from '../scan/fixtures';
 import type { InspectionApi } from '../explore/contract';
-import { indexFindings } from '../explore/model';
+import { createTreeApi, pathOf } from '../explore/treeApi';
 import type {
   Artifact,
   DevelopmentApi,
@@ -154,12 +154,11 @@ export function developmentFixture(): {
     dockerInventory: async () => dockerFixture(),
     cancelDocker: async () => undefined,
   };
-  const index = indexFindings(findings);
   const inspectionApi: InspectionApi = {
     inspect: async (_generation, findingId) => ({
       findingId,
-      displayPath: index.paths.get(findingId) ?? 'Unavailable',
-      copyPath: index.paths.get(findingId) ?? null,
+      displayPath: pathOf(findings, findingId),
+      copyPath: pathOf(findings, findingId),
       artifact:
         artifacts.find((artifact) => artifact.findingId === findingId) ?? null,
       recognizedAtId: findingId,
@@ -169,7 +168,7 @@ export function developmentFixture(): {
     },
     copy: async () => undefined,
   };
-  const scanApi = createFixtureApi();
+  const scanApi = createTreeApi(createFixtureApi(), findings);
   scanApi.current = async () => ({
     scope: { id: 'SYNTHETIC', roots: [fixtureLocation], exclusions: [] },
     progress: fixtureProgress('partial'),

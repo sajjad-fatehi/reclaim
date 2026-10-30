@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import type { ReactElement } from 'react';
-import type { Finding } from '../scan/contract';
+import type { Finding, FoldedRow } from '../scan/contract';
 import { formatBytes } from '../scan/accounting';
+import { foldedLabel } from './model';
 import { layoutTreemap } from './treemapLayout';
 
 const labelMinimumWidth = 9;
@@ -9,18 +10,24 @@ const labelMinimumHeight = 14;
 
 export function Treemap({
   findings,
+  folded,
   selectedId,
   onSelect,
   onOpen,
 }: {
   findings: Finding[];
+  folded: FoldedRow | null;
   selectedId: string | null;
-  onSelect: (findingId: string) => void;
-  onOpen: (findingId: string) => void;
+  onSelect: (finding: Finding) => void;
+  onOpen: (finding: Finding) => void;
 }): ReactElement {
-  const tiles = useMemo(() => layoutTreemap(findings), [findings]);
+  const tiles = useMemo(
+    () => layoutTreemap(findings, folded?.allocatedBytes),
+    [findings, folded],
+  );
   const drawnIds = useMemo(
-    () => new Set(tiles.map((tile) => tile.finding.id)),
+    () =>
+      new Set(tiles.flatMap((tile) => (tile.finding ? [tile.finding.id] : []))),
     [tiles],
   );
   const notDrawn = findings.filter((finding) => !drawnIds.has(finding.id));
@@ -31,39 +38,68 @@ export function Treemap({
         role="group"
         aria-label="Treemap of allocated size"
       >
-        {tiles.map(({ finding, left, top, width, height }) => (
-          <button
-            key={finding.id}
-            type="button"
-            className="treemap-tile"
-            data-finding-id={finding.id}
-            data-kind={finding.kind}
-            data-partial={finding.complete ? undefined : 'true'}
-            aria-pressed={selectedId === finding.id}
-            aria-label={`Inspect ${finding.displayName}`}
-            title={`${finding.displayName} · ${formatBytes(finding.allocatedBytes)}`}
-            style={{
-              left: `${left}%`,
-              top: `${top}%`,
-              width: `${width}%`,
-              height: `${height}%`,
-            }}
-            onClick={() => onSelect(finding.id)}
-            onDoubleClick={() => {
-              if (finding.kind === 'directory') onOpen(finding.id);
-            }}
-          >
-            {width >= labelMinimumWidth && height >= labelMinimumHeight && (
-              <span className="treemap-label" aria-hidden="true">
-                <strong className="path-text">{finding.displayName}</strong>
-                <span>
-                  {formatBytes(finding.allocatedBytes)}
-                  {finding.complete ? '' : ' · partial'}
+        {tiles.map(({ finding, left, top, width, height }) =>
+          finding ? (
+            <button
+              key={finding.id}
+              type="button"
+              className="treemap-tile"
+              data-finding-id={finding.id}
+              data-kind={finding.kind}
+              data-partial={finding.complete ? undefined : 'true'}
+              aria-pressed={selectedId === finding.id}
+              aria-label={`Inspect ${finding.displayName}`}
+              title={`${finding.displayName} · ${formatBytes(finding.allocatedBytes)}`}
+              style={{
+                left: `${left}%`,
+                top: `${top}%`,
+                width: `${width}%`,
+                height: `${height}%`,
+              }}
+              onClick={() => onSelect(finding)}
+              onDoubleClick={() => {
+                if (finding.kind === 'directory') onOpen(finding);
+              }}
+            >
+              {width >= labelMinimumWidth && height >= labelMinimumHeight && (
+                <span className="treemap-label" aria-hidden="true">
+                  <strong className="path-text">{finding.displayName}</strong>
+                  <span>
+                    {formatBytes(finding.allocatedBytes)}
+                    {finding.complete ? '' : ' · partial'}
+                  </span>
                 </span>
-              </span>
-            )}
-          </button>
-        ))}
+              )}
+            </button>
+          ) : folded ? (
+            <div
+              key="folded"
+              role="img"
+              className="treemap-tile treemap-folded"
+              aria-label={foldedLabel(
+                folded,
+                formatBytes(folded.allocatedBytes),
+              )}
+              title={foldedLabel(folded, formatBytes(folded.allocatedBytes))}
+              style={{
+                left: `${left}%`,
+                top: `${top}%`,
+                width: `${width}%`,
+                height: `${height}%`,
+              }}
+            >
+              {width >= labelMinimumWidth && height >= labelMinimumHeight && (
+                <span className="treemap-label" aria-hidden="true">
+                  <strong>
+                    {folded.items.toLocaleString('en-US')} smaller{' '}
+                    {folded.items === 1 ? 'item' : 'items'}
+                  </strong>
+                  <span>{formatBytes(folded.allocatedBytes)} · not listed</span>
+                </span>
+              )}
+            </div>
+          ) : null,
+        )}
       </div>
       {tiles.length === 0 && (
         <p className="secondary">Nothing measurable to draw in this scope.</p>

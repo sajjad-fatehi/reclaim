@@ -27,7 +27,6 @@ import {
   initialDevelopmentView,
   relatedWorktrees,
 } from './model';
-import { indexFindings } from '../explore/model';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -193,11 +192,16 @@ test('recognition pages preserve native totals and reject stale, duplicate and s
 
 test('native owned totals and shared exclusive rows remain separate; stable BigInt sorting and worktree links', () => {
   const fixture = developmentFixture();
-  const index = indexFindings(fixture.findings);
+  const names = new Map(
+    fixture.findings.map((finding) => [finding.id, finding.displayName]),
+  );
+  const byId = new Map(
+    fixture.findings.map((finding) => [finding.id, finding]),
+  );
   const projects = filterArtifacts(
     fixture.report.findings,
-    index.byId,
-    index.paths,
+    byId,
+    names,
     'projects',
     initialDevelopmentView,
   );
@@ -213,13 +217,10 @@ test('native owned totals and shared exclusive rows remain separate; stable BigI
       (artifact) => artifact.findingId,
     ),
   ).toEqual(['1:5']);
-  const tools = filterArtifacts(
-    fixture.report.findings,
-    index.byId,
-    index.paths,
-    'tools',
-    { ...initialDevelopmentView, family: 'pnpm' },
-  );
+  const tools = filterArtifacts(fixture.report.findings, byId, names, 'tools', {
+    ...initialDevelopmentView,
+    family: 'pnpm',
+  });
   expect(tools).toHaveLength(1);
   expect(tools[0]?.projectId).toBeNull();
   const large = [
@@ -227,14 +228,37 @@ test('native owned totals and shared exclusive rows remain separate; stable BigI
     { ...project, findingId: '1:98', ownedAllocatedBytes: '9007199254740992' },
   ];
   expect(
-    filterArtifacts(
-      large,
-      index.byId,
-      index.paths,
-      'projects',
-      initialDevelopmentView,
-    )[0]?.findingId,
+    filterArtifacts(large, byId, names, 'projects', initialDevelopmentView)[0]
+      ?.findingId,
   ).toBe('1:99');
+});
+
+test('rows show readable names and locations, never raw ids, even while resolving and after rate limits', async () => {
+  const fixture = developmentFixture();
+  const resolve = vi.spyOn(fixture.scanApi, 'findings');
+  resolve.mockRejectedValueOnce({ code: 'rate_limited' });
+  const { disconnect } = await setup({ fixture });
+  const rawId = /\b\d+:\d+\b/;
+  const table = screen.getByRole('table');
+  expect(table.textContent).toContain('Loading item name…');
+  expect(table.textContent).not.toMatch(rawId);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1500);
+  });
+  expect(table.textContent).toContain('SYNTHETIC Atlas – 開発');
+  expect(table.textContent).toContain('/SYNTHETIC/Projects');
+  expect(table.textContent).not.toContain('Loading item name…');
+  expect(table.textContent).not.toMatch(rawId);
+  expect(screen.queryByText(/rate.limit/i)).toBeNull();
+  switchTools();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1500);
+  });
+  expect(
+    screen.getByRole('table', { name: 'Filesystem artifacts by tool family' })
+      .textContent,
+  ).not.toMatch(rawId);
+  disconnect();
 });
 
 test('Projects exposes owned artifacts and locked/unknown linked worktree; all Tools families usable', async () => {

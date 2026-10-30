@@ -28,6 +28,22 @@ The shared inspector consumes a `Finding`, generation and session status plus `s
 
 Proof will cover bounded rendering, navigation/search/sort, duplicates/Unicode/long paths, partial states, selection updates, forged/stale IDs and changed/missing/symlinked targets. Native fixture QA covers keyboard, accessibility tree/VoiceOver availability, Finder handoff, themes, compact/200% text and reduced motion; unavailable evidence must be stated explicitly.
 
+## Per-directory listing contract (summary-first scan)
+
+Supersedes the snapshot-indexing rules above where they conflict. Explore no longer indexes `ScanSnapshot.findings`; it reads the immutable native snapshot one directory at a time.
+
+- **Listing:** `scan_children(generation, parentId | null, cursor, 200, sort)` per directory, `null` = effective roots. Sort is server-driven: Size (largest first), Name (A–Z), Modified (newest first); the direction is fixed by the contract, so headers choose a sort and `aria-sort` reports its fixed direction. Rows render 50 per page; further 200-row chunks load on demand through the opaque cursor. Loaded chunks, filters, page, scroll and selection are retained per scope for the generation; a new generation resets them. Breadcrumbs are the trail of directories the user opened.
+- **Folded row:** when `folded.items > 0` and the last page is shown, the table ends with a non-interactive row "N smaller items · X (not listed)" and the treemap draws a labelled folded tile of the same bytes. The folded entry has no inspect/open action, is skipped by arrow-key navigation and is never selectable or revealable.
+- **Search:** `scan_search` over listed (retained) names across the whole scan, not just the open folder. Scope is always disclosed as "Searches listed items" and results are never presented as complete: copy states the total listed matches and that the largest 200 are shown, and that folded items are not searched. Input is debounced (250 ms); rows show their parent folder name to separate equal names.
+- **Inspector:** a directory with `detail: 'summarized'` reads "Contains N items; M listed; remainder summarized." (N = `descendantItems`, M = N − `foldedItems`; nested summarized folders report their own remainder). `aliasOf` is a `dev:ino` identity, not a finding id; shared storage reads "Shares storage with an item counted elsewhere".
+- **Rate limits:** the native read budget (100 ms) can answer `rate_limited`. Reads go through one serial queue per API (`reads.ts`), retry after a short delay and never surface `rate_limited` to the user. Responses for a navigated-away scope, query or generation are dropped. Other failures show a retryable notice.
+- **Investigations** (Overview category, Development "Explore") resolve their finding ids with `scan_findings` (≤200 per request) and list them flat; opening a folder from there browses it unfiltered.
+- **Development** resolves artifact and project names with `scan_findings` instead of indexing scan records.
+
+### Per-directory listing evidence
+
+`npm run check` passes (70 frontend tests, 40 + 51 Rust tests). `src/explore/explore.test.tsx` covers server sort/navigation, 50-row pages with chunk loading, the folded row and non-selectable treemap tile, summarized-directory and shared-storage inspector copy, debounced scope-disclosed search, transparent `rate_limited` retry (listing and `readThrottled`), stale-scope drop and retryable failures. Rendered list and treemap screenshots of a summarized directory come from the synthetic `/?fixture=explore` provider; native WebView interaction and VoiceOver were not re-run.
+
 ## Delivered contract and verification
 
 - `src/explore/Explore.tsx` is mounted by `ScanApplication` and consumes the existing provider. `model.ts` owns presentation indexes, descendant matching, deterministic ascending/descending ordering and 50-row pages. Name, allocated contribution, type and measurement status are shown; full native paths are available in the inspector. Selection uses finding IDs rather than display names, survives filters/updates, and resets on generation replacement. Folder-specific filters/page/scroll are retained while shell navigation keeps the view mounted.

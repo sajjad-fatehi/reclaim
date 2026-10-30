@@ -96,7 +96,7 @@ export class ScanSession {
   private revision = 0;
   private polling = false;
 
-  constructor(private readonly api: ScanApi) {}
+  constructor(readonly api: ScanApi) {}
 
   getSnapshot = (): ScanState => this.state;
   subscribe = (listener: () => void): (() => void) => {
