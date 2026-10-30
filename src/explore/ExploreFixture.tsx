@@ -7,7 +7,7 @@ import {
   fixtureLocation,
   fixtureProgress,
 } from '../scan/fixtures';
-import { indexFindings } from './model';
+import { createTreeApi, pathOf } from './treeApi';
 import type { InspectionApi } from './contract';
 
 const [root, file] = fixtureFindings();
@@ -43,6 +43,11 @@ const findings = [
     displayName: 'SYNTHETIC atlas-web',
     allocatedBytes: '17400000000',
     logicalBytes: '19000000000',
+    detail: 'summarized' as const,
+    foldedItems: 48213,
+    foldedAllocatedBytes: '1730000000',
+    foldedLogicalBytes: '1730000000',
+    descendantItems: 48222,
   },
   ...[
     ['target', '9600000000', 'directory', true],
@@ -78,8 +83,9 @@ const findings = [
     allocatedBytes: `${4096 * (index + 1)}`,
   })),
 ];
-const index = indexFindings(findings);
-const scanApi = createFixtureApi();
+const scanApi = createTreeApi(createFixtureApi(), findings, {
+  '1:200': { items: 48213, allocatedBytes: '1730000000' },
+});
 scanApi.current = async () => ({
   scope: { id: 'fixture', roots: [fixtureLocation], exclusions: [] },
   progress: fixtureProgress('partial'),
@@ -88,13 +94,13 @@ scanApi.page = async (_generation, offset) => ({
   progress: fixtureProgress('partial'),
   offset,
   nextOffset: null,
-  findings,
+  findings: [],
 });
 const inspectionApi: InspectionApi = {
   inspect: async (_generation, findingId) => ({
     findingId,
-    displayPath: index.paths.get(findingId) ?? 'Unavailable',
-    copyPath: index.paths.get(findingId) ?? null,
+    displayPath: pathOf(findings, findingId),
+    copyPath: pathOf(findings, findingId),
     recognizedAtId: '1:2',
     artifact: {
       findingId: '1:2',

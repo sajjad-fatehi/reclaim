@@ -5,7 +5,7 @@ import { formatBytes } from '../scan/accounting';
 import { Inspector, Notice, Toolbar } from '../shell/primitives';
 import { actionError, nativeInspectionApi } from './contract';
 import type { Inspection, InspectionApi } from './contract';
-import { measurementStatus } from './model';
+import { isSummarized, listedItems, measurementStatus } from './model';
 import type { DockerItem } from '../development/contract';
 import { DockerDetails } from '../development/DockerDetails';
 import { ReviewButton } from '../cleanup/ReviewButton';
@@ -290,8 +290,19 @@ function InspectorContent({
       </dl>
       <p className="secondary">
         Directory totals include measured descendants. Shared identities count
-        once{finding.aliasOf ? `; counted at ${finding.aliasOf}` : ''}.
+        once
+        {finding.aliasOf
+          ? '; this item shares storage with an item counted elsewhere'
+          : ''}
+        .
       </p>
+      {isSummarized(finding) && (
+        <p className="secondary">
+          Contains {finding.descendantItems.toLocaleString('en-US')} items;{' '}
+          {listedItems(finding).toLocaleString('en-US')} listed; remainder
+          summarized.
+        </p>
+      )}
     </>
   );
 }

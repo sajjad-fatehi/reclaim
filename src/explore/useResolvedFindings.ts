@@ -1,0 +1,47 @@
+import { useEffect, useRef, useState } from 'react';
+import type { Finding, ScanApi } from '../scan/contract';
+import { resolveFindings } from './useListing';
+
+/** Resolves finding ids to findings through `scan_findings`, keeping what was already resolved. */
+export function useResolvedFindings(
+  api: ScanApi,
+  generation: number,
+  ids: readonly string[],
+  enabled: boolean,
+): Map<string, Finding> {
+  const [resolved, setResolved] = useState(() => new Map<string, Finding>());
+  const requested = useRef(new Set<string>());
+  const signature = ids.join('\u0000');
+
+  useEffect(() => {
+    if (!enabled) return;
+    const pending = requested.current;
+    const missing = [...new Set(ids)].filter((id) => !pending.has(id));
+    if (missing.length === 0) return;
+    for (const id of missing) pending.add(id);
+    let active = true;
+    let completed = false;
+    resolveFindings(api, generation, missing, () => active)
+      .then((findings) => {
+        completed = true;
+        if (!active) return;
+        setResolved((current) => {
+          const next = new Map(current);
+          for (const finding of findings) next.set(finding.id, finding);
+          return next;
+        });
+      })
+      .catch(() => {
+        for (const id of missing) pending.delete(id);
+      });
+    return () => {
+      active = false;
+      if (completed) return;
+      for (const id of missing) pending.delete(id);
+    };
+    // `ids` is represented by `signature`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, generation, signature, enabled]);
+
+  return resolved;
+}

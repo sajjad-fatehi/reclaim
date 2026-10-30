@@ -7,7 +7,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import type { Finding } from '../scan/contract';
+import type { Finding, ScanApi } from '../scan/contract';
 import {
   createFixtureApi,
   fixtureFindings,
@@ -18,7 +18,9 @@ import { ScanSession } from '../scan/session';
 import { ScanContext } from '../scan/useScanSession';
 import { Explore } from './Explore';
 import { ItemInspector } from './ItemInspector';
-import { ancestors, browse, indexFindings } from './model';
+import { foldedLabel, sortFindings } from './model';
+import { readThrottled, staleRead } from './reads';
+import { createTreeApi } from './treeApi';
 import { parseInspection } from './contract';
 import type { InspectionApi } from './contract';
 
@@ -90,91 +92,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test('navigation, descendant search, stable ascending/descending ties, hidden and partial findings', () => {
-  const index = indexFindings(findings());
-  const options = {
-    directoryId: '1:0',
-    query: '',
-    sort: 'name' as const,
-    descending: false,
-    findingIds: null,
-  };
-  expect(
-    browse(index, options)
-      .map((finding) => finding.id)
-      .sort(),
-  ).toEqual(['1:2', '1:3']);
-  expect(ancestors(index, '1:2').map((finding) => finding.id)).toEqual([
-    '1:0',
-    '1:2',
-  ]);
-  const matches = browse(index, { ...options, query: 'same' });
-  expect(matches.map((finding) => finding.id)).toEqual(['1:5', '1:6']);
-  expect(index.paths.get('1:5')).not.toEqual(index.paths.get('1:6'));
-  expect(
-    browse(index, { ...options, directoryId: '1:2', query: 'same' }).map(
-      (finding) => finding.id,
-    ),
-  ).toEqual(['1:5']);
-  expect(browse(index, { ...options, query: 'missing' })).toEqual([]);
-  expect(
-    browse(index, { ...options, directoryId: '1:2', sort: 'size' }).map(
-      (finding) => finding.id,
-    ),
-  ).toEqual(['1:5', '1:4']);
-  expect(
-    browse(index, {
-      ...options,
-      directoryId: '1:2',
-      sort: 'size',
-      descending: true,
-    }).map((finding) => finding.id),
-  ).toEqual(['1:4', '1:5']);
-  expect(
-    requiredFinding(browse(index, { ...options, query: '.hidden' }), 0).issue,
-  ).toBe('permission_denied');
-  expect(
-    browse(index, { ...options, findingIds: new Set(['1:6']) }).map(
-      (finding) => finding.id,
-    ),
-  ).toEqual(['1:6']);
-});
-
-test('100,000 findings stay bounded; long Unicode paths and exact byte sorting survive', () => {
-  vi.useRealTimers();
-  const [root, file] = fixturePair();
-  const large = [
-    root,
-    ...Array.from({ length: 99_999 }, (_unused, index) => ({
-      ...file,
-      id: `1:${index + 1}`,
-      displayName: `${'日本語'.repeat(100)}-${index}`,
-      allocatedBytes: `${9007199254740993n + BigInt(index)}`,
-    })),
-  ];
-  const started = performance.now();
-  const index = indexFindings(large);
-  const rows = browse(index, {
-    directoryId: root.id,
-    query: '日本語',
-    sort: 'size',
-    descending: true,
-    findingIds: null,
-  });
-  expect(rows).toHaveLength(99_999);
-  expect(requiredFinding(rows, 0).id).toBe('1:99999');
-  expect(index.paths.get(requiredFinding(rows, 0).id)?.length).toBeGreaterThan(
-    300,
-  );
-  console.info(
-    `SYNTHETIC 100k index/search/sort: ${Math.round(performance.now() - started)}ms; page bounded at 50 rows`,
-  );
-});
-
-async function setup(
-  entries: Finding[] = findings(),
-): Promise<{ session: ScanSession; disconnect: () => void }> {
-  const api = createFixtureApi();
+function mount(
+  entries: Finding[],
+  folded: Record<string, { items: number; allocatedBytes: string }> = {},
+): { api: ScanApi; session: ScanSession; disconnect: () => void } {
+  const api = createTreeApi(createFixtureApi(), entries, folded);
   api.current = async () => ({
     scope: { id: 'scope', roots: [fixtureLocation], exclusions: [] },
     progress: fixtureProgress(),
@@ -183,31 +105,303 @@ async function setup(
     progress: fixtureProgress(),
     offset,
     nextOffset: null,
-    findings: entries,
+    findings: [],
   });
   const session = new ScanSession(api);
   const disconnect = session.connect();
+  return { api, session, disconnect };
+}
+async function settle(milliseconds = 400): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(milliseconds);
+  });
+}
+async function setup(
+  entries: Finding[] = findings(),
+  folded: Record<string, { items: number; allocatedBytes: string }> = {},
+): Promise<{
+  api: ScanApi;
+  session: ScanSession;
+  disconnect: () => void;
+}> {
+  const mounted = mount(entries, folded);
   await vi.advanceTimersByTimeAsync(400);
   render(
-    <ScanContext.Provider value={session}>
+    <ScanContext.Provider value={mounted.session}>
       <Explore api={inspectionApi} onOverview={vi.fn()} />
     </ScanContext.Provider>,
   );
-  return { session, disconnect };
+  await settle();
+  return mounted;
 }
-
-test('Open differs from Inspect; selection persists across filters/navigation and overview handoff resets', async () => {
-  const { session, disconnect } = await setup();
+async function openRoot(): Promise<void> {
   fireEvent.click(
     screen.getByRole('button', {
       name: `Open folder ${fixtureLocation.displayPath}`,
     }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Open folder 開発' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Inspect same.txt' }));
-  await act(async () => {
-    await Promise.resolve();
+  await settle();
+}
+
+test('flat lists sort like the native orders and folded copy states the remainder', () => {
+  const [root, file] = fixturePair();
+  const list = [
+    {
+      ...file,
+      id: 'b',
+      displayName: 'Bravo',
+      allocatedBytes: '9007199254740993',
+    },
+    {
+      ...file,
+      id: 'a',
+      displayName: 'alpha',
+      allocatedBytes: '9007199254740992',
+    },
+    {
+      ...root,
+      id: 'c',
+      displayName: 'charlie',
+      allocatedBytes: '5',
+      modifiedAtMs: 7,
+    },
+  ];
+  expect(sortFindings(list, 'size').map((finding) => finding.id)).toEqual([
+    'b',
+    'a',
+    'c',
+  ]);
+  expect(sortFindings(list, 'name').map((finding) => finding.id)).toEqual([
+    'a',
+    'b',
+    'c',
+  ]);
+  expect(sortFindings(list, 'modified')[0]?.id).toBe('c');
+  expect(
+    foldedLabel(
+      { items: 1234, logicalBytes: '1', allocatedBytes: '1' },
+      '1.0 GiB',
+    ),
+  ).toBe('1,234 smaller items · 1.0 GiB (not listed)');
+});
+
+test('readThrottled retries rate_limited, serializes reads and drops stale scopes', async () => {
+  const owner = {};
+  const order: string[] = [];
+  const limited = vi
+    .fn<() => Promise<string>>()
+    .mockRejectedValueOnce({ code: 'rate_limited' })
+    .mockRejectedValueOnce({ code: 'rate_limited' })
+    .mockResolvedValue('ok');
+  const first = readThrottled(owner, async () => {
+    order.push('first');
+    return limited();
   });
+  const second = readThrottled(owner, async () => {
+    order.push('second');
+    return 'later';
+  });
+  await vi.advanceTimersByTimeAsync(400);
+  expect(await first).toBe('ok');
+  expect(await second).toBe('later');
+  expect(limited).toHaveBeenCalledTimes(3);
+  expect(order).toEqual(['first', 'first', 'first', 'second']);
+  const skipped = vi.fn(async () => 'never');
+  await expect(readThrottled(owner, skipped, () => false)).rejects.toBe(
+    staleRead,
+  );
+  expect(skipped).not.toHaveBeenCalled();
+  await expect(
+    readThrottled(owner, async () => {
+      throw { code: 'busy' };
+    }),
+  ).rejects.toEqual({ code: 'busy' });
+});
+
+test('rate_limited listings are retried transparently and never shown as an error', async () => {
+  const mounted = mount(findings());
+  const children = vi.spyOn(mounted.api, 'children');
+  children.mockRejectedValueOnce({ code: 'rate_limited' });
+  children.mockRejectedValueOnce({ code: 'rate_limited' });
+  await vi.advanceTimersByTimeAsync(400);
+  render(
+    <ScanContext.Provider value={mounted.session}>
+      <Explore api={inspectionApi} onOverview={vi.fn()} />
+    </ScanContext.Provider>,
+  );
+  expect(screen.queryByText(/rate/i)).toBeNull();
+  await settle(500);
+  expect(children).toHaveBeenCalledTimes(3);
+  expect(
+    screen.getByRole('button', {
+      name: `Open folder ${fixtureLocation.displayPath}`,
+    }),
+  ).toBeTruthy();
+  expect(screen.queryByText(/rate.limit|Listing unavailable/i)).toBeNull();
+  mounted.disconnect();
+});
+
+test('other listing failures offer a retry', async () => {
+  const mounted = mount(findings());
+  const children = vi.spyOn(mounted.api, 'children');
+  children.mockRejectedValueOnce({ code: 'internal' });
+  await vi.advanceTimersByTimeAsync(400);
+  render(
+    <ScanContext.Provider value={mounted.session}>
+      <Explore api={inspectionApi} onOverview={vi.fn()} />
+    </ScanContext.Provider>,
+  );
+  await settle();
+  expect(screen.getByText(/Listing unavailable/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await settle();
+  expect(screen.queryByText(/Listing unavailable/)).toBeNull();
+  expect(
+    screen.getByRole('button', {
+      name: `Open folder ${fixtureLocation.displayPath}`,
+    }),
+  ).toBeTruthy();
+  mounted.disconnect();
+});
+
+test('server-driven sort and navigation; breadcrumbs and up-one-folder', async () => {
+  const { api, disconnect } = await setup();
+  const children = vi.spyOn(api, 'children');
+  await openRoot();
+  expect(children).toHaveBeenLastCalledWith(1, '1:0', null, 'size');
+  fireEvent.click(screen.getByRole('button', { name: 'Name' }));
+  await settle();
+  expect(children).toHaveBeenLastCalledWith(1, '1:0', null, 'name');
+  expect(
+    screen
+      .getByRole('columnheader', { name: /Name/ })
+      .getAttribute('aria-sort'),
+  ).toBe('ascending');
+  fireEvent.click(screen.getByRole('button', { name: 'Open folder 開発' }));
+  await settle();
+  expect(
+    screen.getByRole('navigation', { name: 'Folder breadcrumbs' }).textContent,
+  ).toContain('開発');
+  expect(screen.getByRole('button', { name: 'Inspect .hidden' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Up one folder' }));
+  await settle();
+  expect(screen.getByRole('button', { name: 'Inspect other' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Scan locations' }));
+  await settle();
+  expect(
+    screen.getByRole('button', {
+      name: `Open folder ${fixtureLocation.displayPath}`,
+    }),
+  ).toBeTruthy();
+  disconnect();
+});
+
+test('summarized directory ends with a folded row and treemap tile that cannot be selected', async () => {
+  const { disconnect } = await setup(findings(), {
+    '1:2': { items: 4321, allocatedBytes: '3221225472' },
+  });
+  await openRoot();
+  expect(document.querySelector('.folded-row')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Open folder 開発' }));
+  await settle();
+  const folded = document.querySelector('.folded-row');
+  expect(folded?.textContent).toContain(
+    '4,321 smaller items · 3.0 GiB (not listed)',
+  );
+  expect(folded?.querySelector('button')).toBeNull();
+  expect(screen.getAllByRole('button', { name: /^Inspect / }).length).toBe(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Treemap' }));
+  const tile = screen.getByRole('img', {
+    name: '4,321 smaller items · 3.0 GiB (not listed)',
+  });
+  expect(tile.tagName).not.toBe('BUTTON');
+  fireEvent.click(tile);
+  expect(screen.queryByRole('complementary')).toBeNull();
+  disconnect();
+});
+
+test('inspector explains summarized directories and shared storage', () => {
+  const [root, file] = fixturePair();
+  render(
+    <ItemInspector
+      finding={{
+        ...root,
+        detail: 'summarized',
+        descendantItems: 1000,
+        foldedItems: 900,
+      }}
+      progress={fixtureProgress()}
+      stale={false}
+      settled
+      onClose={vi.fn()}
+      onInspectRelated={vi.fn()}
+      api={inspectionApi}
+    />,
+  );
+  expect(
+    screen.getByText('Contains 1,000 items; 100 listed; remainder summarized.'),
+  ).toBeTruthy();
+  cleanup();
+  render(
+    <ItemInspector
+      finding={{ ...file, aliasOf: '16777221:42' }}
+      progress={fixtureProgress()}
+      stale={false}
+      settled
+      onClose={vi.fn()}
+      onInspectRelated={vi.fn()}
+      api={inspectionApi}
+    />,
+  );
+  expect(
+    screen.getByText(/shares storage with an item counted elsewhere/),
+  ).toBeTruthy();
+  expect(screen.queryByText(/16777221:42/)).toBeNull();
+});
+
+test('search is native, debounced, scope-disclosed and never claims completeness', async () => {
+  const { api, disconnect } = await setup();
+  const search = vi.spyOn(api, 'search');
+  expect(screen.getByText('Search listed items')).toBeTruthy();
+  const box = screen.getByRole('searchbox');
+  fireEvent.change(box, { target: { value: 's' } });
+  fireEvent.change(box, { target: { value: 'sa' } });
+  fireEvent.change(box, { target: { value: 'same' } });
+  await settle(100);
+  expect(search).not.toHaveBeenCalled();
+  await settle(500);
+  expect(search).toHaveBeenCalledTimes(1);
+  expect(search).toHaveBeenCalledWith(1, 'same');
+  expect(
+    screen.getAllByRole('button', { name: 'Inspect same.txt' }),
+  ).toHaveLength(2);
+  expect(document.body.textContent).toContain('2 listed matches');
+  expect(document.body.textContent).toContain('never a complete count');
+  expect(document.body.textContent).not.toMatch(
+    /all matches|complete results/i,
+  );
+  fireEvent.change(box, { target: { value: 'nothing-here' } });
+  await settle(600);
+  expect(document.body.textContent).toContain(
+    'No listed item matches. Smaller items summarized into folders are not searched.',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Reset filters' }));
+  await settle();
+  expect(
+    screen.getByRole('button', {
+      name: `Open folder ${fixtureLocation.displayPath}`,
+    }),
+  ).toBeTruthy();
+  disconnect();
+});
+
+test('Open differs from Inspect; selection persists across navigation and overview handoff resets', async () => {
+  const { session, disconnect } = await setup();
+  await openRoot();
+  fireEvent.click(screen.getByRole('button', { name: 'Open folder 開発' }));
+  await settle();
+  fireEvent.click(screen.getByRole('button', { name: 'Inspect same.txt' }));
+  await settle();
   expect(
     screen.getByRole('complementary', { name: 'Item details' }).textContent,
   ).toContain('Unknown owner');
@@ -215,14 +409,6 @@ test('Open differs from Inspect; selection persists across filters/navigation an
   expect(document.activeElement?.getAttribute('aria-label')).toBe(
     'Inspect same.txt',
   );
-  fireEvent.change(screen.getByRole('searchbox'), {
-    target: { value: '.hidden' },
-  });
-  expect(screen.queryByRole('button', { name: 'Inspect same.txt' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Up one folder' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Open folder 開発' }));
-  expect(screen.getByRole('searchbox').getAttribute('value')).toBe('.hidden');
-  fireEvent.click(screen.getByRole('button', { name: 'Reset filters' }));
   act(() =>
     session.investigate({
       generation: 1,
@@ -230,36 +416,43 @@ test('Open differs from Inspect; selection persists across filters/navigation an
       findingIds: ['1:5'],
     }),
   );
+  await settle();
   expect(screen.queryByRole('button', { name: 'Inspect .hidden' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Inspect same.txt' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Reset filters' }));
   expect(session.getSnapshot().investigation).toBeNull();
+  await settle();
+  expect(screen.getByRole('button', { name: 'Inspect .hidden' })).toBeTruthy();
   disconnect();
 });
 
-test('pagination renders 50 rows and resets empty filter without extra scan', async () => {
+test('pagination renders 50 rows and loads further chunks on demand', async () => {
   const [root, file] = fixturePair();
-  const { disconnect } = await setup([
-    root,
-    ...Array.from({ length: 123 }, (_unused, index) => ({
-      ...file,
-      id: `1:${index + 1}`,
-      displayName: `file-${index}`,
-    })),
-  ]);
-  fireEvent.click(
-    screen.getByRole('button', { name: `Open folder ${root.displayName}` }),
-  );
+  const many = Array.from({ length: 260 }, (_unused, index) => ({
+    ...file,
+    id: `1:${index + 1}`,
+    parentId: root.id,
+    displayName: `file-${index}`,
+    allocatedBytes: String(1000 - index),
+  }));
+  const { api, disconnect } = await setup([root, ...many]);
+  const children = vi.spyOn(api, 'children');
+  await openRoot();
   const table = screen.getByRole('table');
   expect(within(table).getAllByRole('row')).toHaveLength(51);
+  for (let step = 0; step < 4; step += 1) {
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    await settle();
+  }
+  expect(children).toHaveBeenCalledTimes(2);
+  expect(children).toHaveBeenLastCalledWith(1, '1:0', '200', 'size');
+  expect(within(table).getAllByRole('row')).toHaveLength(51);
   fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
-  expect(within(table).getAllByRole('row')).toHaveLength(51);
-  fireEvent.change(screen.getByRole('searchbox'), {
-    target: { value: 'no match' },
-  });
-  expect(screen.getByText(/No matching entries/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Reset filters' }));
-  expect(within(table).getAllByRole('row')).toHaveLength(51);
+  await settle();
+  expect(within(table).getAllByRole('row')).toHaveLength(11);
+  expect(
+    screen.getByRole('button', { name: 'Next page' }).hasAttribute('disabled'),
+  ).toBe(true);
   disconnect();
 });
 
@@ -320,21 +513,17 @@ test('inspector copy/reveal are explicit identity actions; stale updates retain 
   expect(() => parseInspection({ findingId: '1:1' })).toThrow();
 });
 
-test('filtered selection keeps details; closing disconnected invoker focuses scoped search', async () => {
+test('searched selection keeps details; closing a disconnected invoker focuses search', async () => {
   const { disconnect } = await setup();
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: `Open folder ${fixtureLocation.displayPath}`,
-    }),
-  );
+  await openRoot();
   fireEvent.click(screen.getByRole('button', { name: 'Open folder 開発' }));
+  await settle();
   fireEvent.click(screen.getByRole('button', { name: 'Inspect same.txt' }));
-  await act(async () => {
-    await Promise.resolve();
-  });
+  await settle();
   fireEvent.change(screen.getByRole('searchbox'), {
     target: { value: '.hidden' },
   });
+  await settle(600);
   expect(screen.getByRole('complementary').textContent).toContain('same.txt');
   fireEvent.click(screen.getByRole('button', { name: 'Close Item details' }));
   expect(document.activeElement).toBe(screen.getByRole('searchbox'));
@@ -422,14 +611,12 @@ test('related evidence stays in same inspector; unknown byte paths disable exact
   expect(screen.getByText('Source data can be lost.')).toBeTruthy();
 });
 
-test('Overview investigation starts at scan scope and reset restores prior folder', async () => {
-  const { session, disconnect } = await setup();
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: `Open folder ${fixtureLocation.displayPath}`,
-    }),
-  );
+test('Overview investigation resolves ids natively and reset restores prior folder', async () => {
+  const { api, session, disconnect } = await setup();
+  const resolve = vi.spyOn(api, 'findings');
+  await openRoot();
   fireEvent.click(screen.getByRole('button', { name: 'Open folder 開発' }));
+  await settle();
   act(() =>
     session.investigate({
       generation: 1,
@@ -437,30 +624,27 @@ test('Overview investigation starts at scan scope and reset restores prior folde
       findingIds: ['1:7'],
     }),
   );
+  await settle();
+  expect(resolve).toHaveBeenCalledWith(1, ['1:7']);
   expect(
     screen.getByRole('button', { name: 'Inspect <script>不存在</script>' }),
   ).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Inspect .hidden' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Reset filters' }));
+  await settle();
   expect(screen.getByRole('button', { name: 'Inspect .hidden' })).toBeTruthy();
   disconnect();
 });
 
 test('arrow keys move selection without stealing focus; Treemap layout exposes tiles', async () => {
   const { disconnect } = await setup();
-  fireEvent.click(
-    screen.getByRole('button', {
-      name: `Open folder ${fixtureLocation.displayPath}`,
-    }),
-  );
+  await openRoot();
   const first = screen.getAllByRole('button', { name: /^Inspect / })[0];
   if (!first) throw new Error('Missing row');
   first.focus();
   fireEvent.click(first);
   fireEvent.keyDown(first, { key: 'ArrowDown' });
-  await act(async () => {
-    await Promise.resolve();
-  });
+  await settle();
   const pressed = screen
     .getAllByRole('button', { name: /^Inspect / })
     .filter((button) => button.getAttribute('aria-pressed') === 'true');

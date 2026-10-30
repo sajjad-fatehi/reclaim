@@ -27,7 +27,6 @@ import {
   initialDevelopmentView,
   relatedWorktrees,
 } from './model';
-import { indexFindings } from '../explore/model';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -193,11 +192,16 @@ test('recognition pages preserve native totals and reject stale, duplicate and s
 
 test('native owned totals and shared exclusive rows remain separate; stable BigInt sorting and worktree links', () => {
   const fixture = developmentFixture();
-  const index = indexFindings(fixture.findings);
+  const names = new Map(
+    fixture.findings.map((finding) => [finding.id, finding.displayName]),
+  );
+  const byId = new Map(
+    fixture.findings.map((finding) => [finding.id, finding]),
+  );
   const projects = filterArtifacts(
     fixture.report.findings,
-    index.byId,
-    index.paths,
+    byId,
+    names,
     'projects',
     initialDevelopmentView,
   );
@@ -213,13 +217,10 @@ test('native owned totals and shared exclusive rows remain separate; stable BigI
       (artifact) => artifact.findingId,
     ),
   ).toEqual(['1:5']);
-  const tools = filterArtifacts(
-    fixture.report.findings,
-    index.byId,
-    index.paths,
-    'tools',
-    { ...initialDevelopmentView, family: 'pnpm' },
-  );
+  const tools = filterArtifacts(fixture.report.findings, byId, names, 'tools', {
+    ...initialDevelopmentView,
+    family: 'pnpm',
+  });
   expect(tools).toHaveLength(1);
   expect(tools[0]?.projectId).toBeNull();
   const large = [
@@ -227,13 +228,8 @@ test('native owned totals and shared exclusive rows remain separate; stable BigI
     { ...project, findingId: '1:98', ownedAllocatedBytes: '9007199254740992' },
   ];
   expect(
-    filterArtifacts(
-      large,
-      index.byId,
-      index.paths,
-      'projects',
-      initialDevelopmentView,
-    )[0]?.findingId,
+    filterArtifacts(large, byId, names, 'projects', initialDevelopmentView)[0]
+      ?.findingId,
   ).toBe('1:99');
 });
 

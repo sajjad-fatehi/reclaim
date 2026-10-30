@@ -8,7 +8,8 @@ import { formatBytes } from '../scan/accounting';
 import { EmptyState, Notice, ResultTable, Toolbar } from '../shell/primitives';
 import { ItemInspector } from '../explore/ItemInspector';
 import type { InspectionApi } from '../explore/contract';
-import { indexFindings, pageSize } from '../explore/model';
+import { pageSize } from '../explore/model';
+import { useResolvedFindings } from '../explore/useResolvedFindings';
 import {
   familyLabels,
   natureLabels,
@@ -77,6 +78,7 @@ function DevelopmentSnapshot({
   snapshot: ScanSnapshot;
   stale: boolean;
 }): ReactElement {
+  const { session } = useScanSession();
   const [report, setReport] = useState<RecognitionPage | null>(null);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -121,13 +123,38 @@ function DevelopmentSnapshot({
       current = false;
     };
   }, [api, generation, settled, revision]);
-  const index = useMemo(
-    () => indexFindings(snapshot.findings),
-    [snapshot.findings],
-  );
-  const artifacts = report?.findings ?? [];
   const view = views[tab];
-  const rows = filterArtifacts(artifacts, index.byId, index.paths, tab, view);
+  const artifacts = useMemo(() => report?.findings ?? [], [report]);
+  const resolveIds = useMemo(
+    () => [
+      ...new Set([
+        ...artifacts.flatMap((artifact) =>
+          artifact.projectId
+            ? [artifact.findingId, artifact.projectId]
+            : [artifact.findingId],
+        ),
+        ...(view.selectedId ? [view.selectedId] : []),
+      ]),
+    ],
+    [artifacts, view.selectedId],
+  );
+  const resolved = useResolvedFindings(
+    session.api,
+    generation,
+    resolveIds,
+    settled,
+  );
+  const names = useMemo(
+    () =>
+      new Map(
+        [...resolved.values()].map((finding) => [
+          finding.id,
+          finding.displayName,
+        ]),
+      ),
+    [resolved],
+  );
+  const rows = filterArtifacts(artifacts, resolved, names, tab, view);
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const page = Math.min(view.page, pageCount - 1);
   const visibleRows = rows.slice(page * pageSize, (page + 1) * pageSize);
@@ -135,7 +162,7 @@ function DevelopmentSnapshot({
     artifacts.find((artifact) => artifact.findingId === view.selectedId) ??
     null;
   const selection = view.selectedId
-    ? (index.byId.get(view.selectedId) ?? null)
+    ? (resolved.get(view.selectedId) ?? null)
     : null;
   const inventory = docker && 'Ok' in docker.result ? docker.result.Ok : null;
   const selectedDocker =
@@ -149,7 +176,10 @@ function DevelopmentSnapshot({
     }));
   }
   function selectArtifact(findingId: string): void {
-    if (!index.byId.has(findingId)) {
+    if (
+      !resolved.has(findingId) &&
+      !artifacts.some((artifact) => artifact.findingId === findingId)
+    ) {
       setNotice(
         'Related item outside this loaded scan. Scan its location to inspect it.',
       );
@@ -199,9 +229,7 @@ function DevelopmentSnapshot({
     }
   }
   function name(artifact: Artifact): string {
-    return (
-      index.byId.get(artifact.findingId)?.displayName ?? artifact.findingId
-    );
+    return names.get(artifact.findingId) ?? artifact.findingId;
   }
   const projectCount = artifacts.filter(isProject).length;
   const uncommittedCount = artifacts.filter((artifact) =>
@@ -544,7 +572,6 @@ function DevelopmentSnapshot({
                 rows={visibleRows}
                 selectedId={view.selectedId}
                 name={name}
-                paths={index.paths}
                 onInspect={selectArtifact}
                 onExplore={onExplore}
                 onProject={showProject}
@@ -795,7 +822,6 @@ function ArtifactGroup({
   rows,
   selectedId,
   name,
-  paths,
   onInspect,
   onExplore,
   onProject,
@@ -805,7 +831,6 @@ function ArtifactGroup({
   rows: Artifact[];
   selectedId: string | null;
   name: (artifact: Artifact) => string;
-  paths: Map<string, string>;
   onInspect: (findingId: string) => void;
   onExplore: (findingId: string) => void;
   onProject: (findingId: string) => void;
@@ -834,7 +859,6 @@ function ArtifactGroup({
               <div>
                 <span className="path-text">{name(artifact)}</span>
                 <span className="secondary finding-path path-text">
-                  {paths.get(artifact.findingId) ?? 'Path unavailable'} ·{' '}
                   {artifact.findingId}
                 </span>
               </div>
