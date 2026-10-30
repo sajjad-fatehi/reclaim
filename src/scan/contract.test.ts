@@ -84,32 +84,3 @@ test('malformed responses are rejected by the decoders', async () => {
   });
   await expect(nativeScanApi.status(1)).rejects.toThrow();
 });
-
-test('the temporary page adapter never calls a removed command', async () => {
-  const [root] = fixtureFindings();
-  vi.mocked(invoke).mockResolvedValueOnce(
-    wire({
-      ...fixtureProgress('running'),
-      retention: { nodes: 0, thresholdBytes: '0', budgetReached: false },
-    }),
-  );
-  expect((await nativeScanApi.page(1, 0)).findings).toEqual([]);
-  vi.mocked(invoke)
-    .mockResolvedValueOnce(progress())
-    .mockResolvedValueOnce(
-      wire({
-        generation: 1,
-        progress: progress(),
-        roots: [root],
-        topLevel: [root],
-        topFiles: [],
-        issues: [],
-      }),
-    );
-  const page = await nativeScanApi.page(1, 0);
-  expect(page.findings).toHaveLength(1);
-  expect(page.nextOffset).toBeNull();
-  expect(
-    vi.mocked(invoke).mock.calls.map(([command]) => command),
-  ).not.toContain('scan_page');
-});

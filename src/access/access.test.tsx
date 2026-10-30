@@ -17,6 +17,7 @@ import {
   fixtureFindings,
   fixtureLocation,
   fixtureProgress,
+  serveScan,
 } from '../scan/fixtures';
 
 afterEach(() => {
@@ -152,12 +153,7 @@ test('Overview lists macOS-denied locations with the same fix action', async () 
     scope: { id: 'fixture', roots: [fixtureLocation], exclusions: [] },
     progress,
   });
-  scanApi.page = async () => ({
-    progress,
-    offset: 0,
-    nextOffset: null,
-    findings: [...findings, deniedFinding],
-  });
+  serveScan(scanApi, progress, [...findings, deniedFinding]);
   vi.useFakeTimers();
   const fake = accessApi('not_granted');
   render(

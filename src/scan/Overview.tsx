@@ -38,26 +38,36 @@ function ScanResults({
 }): ReactElement {
   const { state, session } = useScanSession();
   const [activeName, setActiveName] = useState<string | null>(null);
-  const categories = useMemo(
-    () => categorize(snapshot.findings),
-    [snapshot.findings],
-  );
   const progress = snapshot.progress;
-  const excluded = snapshot.findings.filter(
-    (finding) => finding.issue === 'excluded',
-  ).length;
-  const issues = snapshot.findings.filter(
-    (finding) => finding.issue !== null && finding.issue !== 'excluded',
+  const summary = snapshot.summary;
+  const topFiles = useMemo(() => summary?.topFiles ?? [], [summary]);
+  const categories = useMemo(
+    () => categorize(progress.volumes, topFiles),
+    [progress.volumes, topFiles],
   );
-  const denied = issues.filter(
-    (finding) => finding.issue === 'permission_denied',
+  const issueGroups = summary?.issues ?? [];
+  const groupCount = (issue: string): number =>
+    issueGroups.find((group) => group.issue === issue)?.count ?? 0;
+  const excluded = groupCount('excluded');
+  const denied =
+    issueGroups.find((group) => group.issue === 'permission_denied')
+      ?.examples ?? [];
+  const issues = issueGroups
+    .filter((group) => group.issue !== 'excluded')
+    .flatMap((group) => group.examples);
+  const issueTotal = issueGroups
+    .filter((group) => group.issue !== 'excluded')
+    .reduce((total, group) => total + group.count, 0);
+  const measuredFiles = categories.reduce(
+    (total, category) => total + category.count,
+    0,
   );
   const access = useAccess();
-  const readable = snapshot.findings.some(
-    (finding) =>
-      finding.kind === 'file' ||
-      (finding.kind === 'directory' && finding.complete),
-  );
+  const readable =
+    measuredFiles > 0 ||
+    (summary?.roots ?? []).some(
+      (root) => root.kind === 'directory' && root.complete,
+    );
   const partial =
     !snapshot.settled ||
     progress.status !== 'complete' ||
@@ -75,15 +85,15 @@ function ScanResults({
     attention.push(
       'Some locations were not fully read. Unvisited descendants are unknown.',
     );
+  if (progress.sharingUntracked)
+    attention.push(
+      'Sharing between hard-linked files could not be fully tracked in this scan. Allocated totals may count some shared data more than once; the true figure is unknown.',
+    );
   if (snapshot.settled && !readable)
     attention.push(
       'No readable results. Review folder access or choose a different location.',
     );
-  if (
-    snapshot.settled &&
-    readable &&
-    !snapshot.findings.some((finding) => finding.kind === 'file')
-  )
+  if (snapshot.settled && readable && measuredFiles === 0)
     attention.push(
       'No measured files in this scope. Empty directories, exclusions and unreadable entries are distinct coverage outcomes.',
     );
@@ -96,12 +106,12 @@ function ScanResults({
             <dd>{progress.issueCount}</dd>
           </div>
           <div>
-            <dt>Excluded entries loaded</dt>
+            <dt>Excluded entries</dt>
             <dd>{excluded}</dd>
           </div>
           <div>
-            <dt>Access, change or limit issues loaded</dt>
-            <dd>{issues.length}</dd>
+            <dt>Access or change issues</dt>
+            <dd>{issueTotal}</dd>
           </div>
         </dl>
         {progress.status === 'complete' && (
@@ -148,7 +158,8 @@ function ScanResults({
         <VolumeUsage
           key={accounting.volume.id}
           accounting={accounting}
-          snapshot={snapshot}
+          topFiles={topFiles}
+          settled={snapshot.settled}
           partial={partial}
           activeName={activeName}
           onActiveChange={setActiveName}
@@ -156,88 +167,91 @@ function ScanResults({
       ))}
       <section className="follow-space" aria-labelledby="follow-space-heading">
         <h3 id="follow-space-heading">Follow the space</h3>
-        {!snapshot.settled ? (
-          <div className="rows-skeleton" role="status">
-            <span className="visually-hidden">
-              Loading measured categories… Ranking waits for final pages so rows
-              stay stable.
-            </span>
-            <span aria-hidden="true" />
-            <span aria-hidden="true" />
-            <span aria-hidden="true" />
-          </div>
-        ) : (
-          <>
-            <ResultTable caption="Measured file categories · ranked by allocated contribution">
-              <thead>
-                <tr>
-                  <th scope="col">Category</th>
-                  <th scope="col" className="numeric">
-                    Allocated
+        <>
+          <ResultTable
+            caption={
+              snapshot.settled
+                ? 'Measured file categories · ranked by allocated contribution'
+                : 'Live category totals · provisional until the scan finishes'
+            }
+          >
+            <thead>
+              <tr>
+                <th scope="col">Category</th>
+                <th scope="col" className="numeric">
+                  Allocated
+                </th>
+                <th scope="col" className="numeric">
+                  Logical
+                </th>
+                <th scope="col">Investigate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categories.map((category) => (
+                <tr
+                  key={category.name}
+                  data-active={activeName === category.name}
+                  onMouseEnter={() => setActiveName(category.name)}
+                  onMouseLeave={() => setActiveName(null)}
+                  onFocus={() => setActiveName(category.name)}
+                  onBlur={() => setActiveName(null)}
+                >
+                  <th scope="row">
+                    <span
+                      className={`category-swatch category-${categoryNames.indexOf(category.name)}`}
+                      aria-hidden="true"
+                    />
+                    {category.name}
+                    <span className="secondary category-count">
+                      {category.count.toLocaleString()} unique files
+                    </span>
                   </th>
-                  <th scope="col" className="numeric">
-                    Logical
-                  </th>
-                  <th scope="col">Investigate</th>
+                  <td className="numeric">
+                    {formatBytes(
+                      category.allocatedBytes,
+                      category.allocatedCapped,
+                    )}
+                  </td>
+                  <td className="numeric">
+                    {formatBytes(category.logicalBytes, category.logicalCapped)}
+                  </td>
+                  <td>
+                    <button
+                      disabled={
+                        !snapshot.settled ||
+                        category.files.length === 0 ||
+                        retained ||
+                        state.stale
+                      }
+                      onClick={() => {
+                        session.investigate({
+                          generation: progress.generation,
+                          category: category.name,
+                          findingIds: category.files.flatMap((file) =>
+                            file.findingId === null ? [] : [file.findingId],
+                          ),
+                        });
+                        onInvestigate();
+                      }}
+                      aria-label={`Investigate ${category.name}`}
+                    >
+                      Explore <ArrowRight size={16} aria-hidden="true" />
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {categories.map((category) => (
-                  <tr
-                    key={category.name}
-                    data-active={activeName === category.name}
-                    onMouseEnter={() => setActiveName(category.name)}
-                    onMouseLeave={() => setActiveName(null)}
-                    onFocus={() => setActiveName(category.name)}
-                    onBlur={() => setActiveName(null)}
-                  >
-                    <th scope="row">
-                      <span
-                        className={`category-swatch category-${categoryNames.indexOf(category.name)}`}
-                        aria-hidden="true"
-                      />
-                      {category.name}
-                      <span className="secondary category-count">
-                        {category.findingIds.length} unique files
-                      </span>
-                    </th>
-                    <td className="numeric">
-                      {formatBytes(
-                        category.allocatedBytes,
-                        category.allocatedCapped,
-                      )}
-                    </td>
-                    <td className="numeric">
-                      {formatBytes(
-                        category.logicalBytes,
-                        category.logicalCapped,
-                      )}
-                    </td>
-                    <td>
-                      <button
-                        disabled={
-                          category.findingIds.length === 0 ||
-                          retained ||
-                          state.stale
-                        }
-                        onClick={() => {
-                          session.investigate({
-                            generation: progress.generation,
-                            category: category.name,
-                            findingIds: category.findingIds,
-                          });
-                          onInvestigate();
-                        }}
-                        aria-label={`Investigate ${category.name}`}
-                      >
-                        Explore <ArrowRight size={16} aria-hidden="true" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </ResultTable>
-            {categories.some((category) => category.allocatedBytes > 0n) && (
+              ))}
+            </tbody>
+          </ResultTable>
+          {snapshot.settled && (
+            <p className="secondary">
+              Category totals cover every measured file. Browsing lists items of{' '}
+              {formatBytes(progress.retention.thresholdBytes)} or more; smaller
+              items are summarized in their folders.
+            </p>
+          )}
+          {snapshot.settled &&
+            categories.some((category) => category.allocatedBytes > 0n) && (
               <p className="secondary">
                 Start with{' '}
                 {
@@ -248,8 +262,7 @@ function ScanResults({
                 extensions describe format, not ownership or deletion safety.
               </p>
             )}
-          </>
-        )}
+        </>
       </section>
       {denied.length > 0 && <AccessGuidance context="denied" />}
       {attention.length > 0 && (
@@ -317,8 +330,11 @@ function ScanResults({
                 {finding.displayName}: {finding.issue?.replaceAll('_', ' ')}
               </p>
             ))}
-          {issues.length > 40 && (
-            <p>Additional issues remain available in shared findings.</p>
+          {issueTotal > issues.length && (
+            <p>
+              Showing {issues.length.toLocaleString()} of{' '}
+              {issueTotal.toLocaleString()} observations.
+            </p>
           )}
         </div>
       </details>
@@ -336,21 +352,19 @@ function ScanResults({
             Check cleanup limitations for an exact scanned location. Recognition
             and size do not make its contents removable.
           </p>
-          {snapshot.findings
-            .filter((finding) => finding.parentId === null)
-            .map((finding) => (
-              <div key={finding.id} className="review-target-heading">
-                <span className="path-text">{finding.displayName}</span>
-                <ReviewButton
-                  disabled={state.stale}
-                  selection={{
-                    source: 'filesystem',
-                    generation: progress.generation,
-                    findingId: finding.id,
-                  }}
-                />
-              </div>
-            ))}
+          {(summary?.roots ?? []).map((finding) => (
+            <div key={finding.id} className="review-target-heading">
+              <span className="path-text">{finding.displayName}</span>
+              <ReviewButton
+                disabled={state.stale}
+                selection={{
+                  source: 'filesystem',
+                  generation: progress.generation,
+                  findingId: finding.id,
+                }}
+              />
+            </div>
+          ))}
         </section>
       )}
     </section>
@@ -508,8 +522,9 @@ export function Overview({
               : 'Preparing locations'}
           </p>
           <p className="secondary">
-            {snapshot.progress.entries.toLocaleString()} entries observed so
-            far. Total work unknown; no percent estimate.
+            {snapshot.progress.entries.toLocaleString()} entries observed so far
+            · {formatBytes(snapshot.progress.allocatedBytes)} allocated. Total
+            work unknown; no percent estimate.
           </p>
         </section>
       )}

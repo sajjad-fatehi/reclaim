@@ -13,6 +13,7 @@ import {
   fixtureFindings,
   fixtureLocation,
   fixtureProgress,
+  serveScan,
 } from '../scan/fixtures';
 import { ScanSession } from '../scan/session';
 import { ScanContext } from '../scan/useScanSession';
@@ -179,12 +180,7 @@ async function setup(
     scope: { id: 'scope', roots: [fixtureLocation], exclusions: [] },
     progress: fixtureProgress(),
   });
-  api.page = async (_generation, offset) => ({
-    progress: fixtureProgress(),
-    offset,
-    nextOffset: null,
-    findings: entries,
-  });
+  serveScan(api, fixtureProgress(), entries);
   const session = new ScanSession(api);
   const disconnect = session.connect();
   await vi.advanceTimersByTimeAsync(400);

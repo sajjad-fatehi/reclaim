@@ -4,6 +4,7 @@ import {
   fixtureFindings,
   fixtureLocation,
   fixtureProgress,
+  serveScan,
 } from '../scan/fixtures';
 import type { InspectionApi } from '../explore/contract';
 import { indexFindings } from '../explore/model';
@@ -173,12 +174,7 @@ export function developmentFixture(): {
     scope: { id: 'SYNTHETIC', roots: [fixtureLocation], exclusions: [] },
     progress: fixtureProgress('partial'),
   });
-  scanApi.page = async (_generation, offset) => ({
-    progress: fixtureProgress('partial'),
-    offset,
-    nextOffset: null,
-    findings,
-  });
+  serveScan(scanApi, fixtureProgress('partial'), findings);
   return { findings, report, api, inspectionApi, scanApi };
 }
 export function dockerFixture(): DockerSnapshot {

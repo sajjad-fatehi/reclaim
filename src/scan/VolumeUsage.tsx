@@ -7,8 +7,7 @@ import {
   isCappedBytes,
   segmentWidth,
 } from './accounting';
-import type { VolumeAccounting } from './contract';
-import type { ScanSnapshot } from './session';
+import type { TopFile, VolumeAccounting } from './contract';
 import { Sunburst } from './Sunburst';
 import { buildSunburstCategories } from './sunburstGeometry';
 
@@ -18,37 +17,33 @@ function categoryIndex(name: (typeof categoryNames)[number]): number {
 
 export function VolumeUsage({
   accounting,
-  snapshot,
+  topFiles,
+  settled,
   partial,
   activeName,
   onActiveChange,
 }: {
   accounting: VolumeAccounting;
-  snapshot: ScanSnapshot;
+  topFiles: TopFile[];
+  settled: boolean;
   partial: boolean;
   activeName: string | null;
   onActiveChange: (name: string | null) => void;
 }): ReactElement {
   const { volume } = accounting;
-  const volumeFindings = useMemo(
-    () =>
-      snapshot.settled
-        ? snapshot.findings.filter((finding) =>
-            finding.identity?.startsWith(`${volume.id}:`),
-          )
-        : [],
-    [snapshot.findings, snapshot.settled, volume.id],
-  );
   const volumeCategories = useMemo(
-    () => categorize(volumeFindings),
-    [volumeFindings],
+    () =>
+      categorize(
+        [accounting],
+        topFiles.filter((file) => file.identity.startsWith(`${volume.id}:`)),
+      ),
+    [accounting, topFiles, volume.id],
   );
   const categorizedBytes = volumeCategories.reduce(
     (total, category) => total + category.allocatedBytes,
     0n,
   );
   const matchingCategories =
-    snapshot.settled &&
     categorizedBytes === BigInt(accounting.scopeAllocatedBytes);
   const total = volume.totalBytes;
   const remainder = accounting.unscannedOrUnexplainedBytes;
@@ -70,14 +65,10 @@ export function VolumeUsage({
       BigInt(total);
   const sunburstCategories = useMemo(
     () =>
-      matchingCategories && consistent
-        ? buildSunburstCategories(
-            volumeCategories,
-            categoryIndex,
-            volumeFindings,
-          )
+      settled && matchingCategories && consistent
+        ? buildSunburstCategories(volumeCategories, categoryIndex)
         : [],
-    [matchingCategories, consistent, volumeCategories, volumeFindings],
+    [settled, matchingCategories, consistent, volumeCategories],
   );
   const measuredBytes = BigInt(accounting.scopeAllocatedBytes);
   const showChart = sunburstCategories.length > 0 && measuredBytes > 0n;
@@ -105,13 +96,11 @@ export function VolumeUsage({
           </>
         ) : (
           <div className="chart-placeholder" role="status">
-            {!snapshot.settled && (
-              <span className="chart-skeleton" aria-hidden="true" />
-            )}
+            {!settled && <span className="chart-skeleton" aria-hidden="true" />}
             <p>
-              {snapshot.settled
+              {settled
                 ? 'No category chart for this volume: measured categories are empty or cannot be reconciled with volume accounting.'
-                : 'Category chart appears after final measurements load. Ranking waits so shapes stay stable.'}
+                : 'Category chart appears when the scan finishes. Live category totals are shown beside it.'}
             </p>
           </div>
         )}
