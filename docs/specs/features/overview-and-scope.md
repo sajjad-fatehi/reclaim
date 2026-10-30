@@ -36,13 +36,24 @@ Follow [shared requirements](index.md) and [interaction flows](../../design/inte
   dot/parent components, control characters and oversized lists. Rules are frozen
   in each registered scope and applied before child metadata/traversal. Excluded
   entries carry explicit coverage issues; totals contain measured contributions only.
-- Retain prior generation separately during refresh. Serialize bounded page polling
-  at >=150ms, re-read terminal pages to finalize mutable directory aggregates, reject
-  late generation replies. Show provisional ingestion and retained/stale data explicitly.
+- Retain prior generation separately during refresh. While running, poll only
+  `scan_status` (>=150ms, serialized) and show its live counters and category totals;
+  once terminal, load `scan_summary` once and settle. No paging and no second pass:
+  directory totals are final when native code publishes them. Reject late generation
+  replies; retry `rate_limited` silently, never as an error. Show provisional
+  progress and retained/stale data explicitly.
 - Overview categories partition unique regular-file contributions by file extension
-  (Documents, Media, Archives, Other files); no source/artifact recognition inference.
-  Categories rank only after terminal ingestion; volume segments use native allocated
-  accounting, unknown metrics remain unavailable. Category investigation targets are
+  (Documents, Media, Archives, Other files); classification and per-volume totals are
+  owned by native code and arrive in `Progress.volumes[].categories`, with the
+  largest files per category in `Summary.topFiles`; no source/artifact recognition
+  inference. Category totals update live while scanning; the chart and Explore handoff
+  wait for the summary. Volume segments use native allocated accounting, unknown
+  metrics remain unavailable.
+- Coverage wording never mentions an entry cap. Retention (what Explore lists) is
+  plain information: totals cover every measured file, and items below the retention
+  threshold are summarized in their folders. When `sharingUntracked` is set, show it
+  as a qualified unknown: shared data may be counted more than once and the true
+  figure is unknown. Category investigation targets are
   typed context for future Explore consumers; unavailable destinations explain status.
 - Native smoke uses isolated synthetic directories and the actual WebView/IPC.
   React fixtures cover edit/exclusion/start/cancel, restore-without-start, empty/denied,
@@ -55,9 +66,10 @@ strings and accounting uses `bigint`. `ScanProvider` in `src/scan/context.tsx`
 wraps the app once. Consumers import `useScanSession` from
 `src/scan/useScanSession.ts` and consume `{ state, session }`:
 
-- `state.snapshot`: `{ scope, progress, findings, settled }`, one authoritative
-  generation; finding IDs/parent IDs retain the native hierarchy. `settled` means
-  terminal pages have been reloaded, not just that a terminal status was observed.
+- `state.snapshot`: `{ scope, progress, findings, summary, settled }`, one
+  authoritative generation. `summary` is the native `scan_summary`; `findings` is
+  its bounded union of roots, top-level nodes and issue examples (IDs/parent IDs
+  retain the native hierarchy). `settled` means the summary was loaded.
 - `state.previous`: retained previous generation during refresh, explicitly stale.
   It is never mixed into current categories or navigation authority.
 - `state.stale`, `error`, `loading`, `busy`, `saving`, `cancelling`, `dirty`:
@@ -67,20 +79,21 @@ wraps the app once. Consumers import `useScanSession` from
 - `session.start()`, `cancel()`, `resume()`, `pickFolder()`, `editPreferences()`
   and `save()`: the single orchestration owner. Consumers must not poll separately;
   the native 100ms read budget covers all retrievals within the session.
-- `state.investigation`: `{ generation, category, findingIds }`, set by category
+- `state.investigation`: `{ generation, category, findingIds }` (ids of the
+  category's native top files), set by category
   selection, then routed to Explore. It is a filter request, never permission or
   cleanup eligibility. Explore currently explains its pending implementation;
   consumers replace that shell slot while preserving this provider.
 
-Pages are serialized every 160ms. Rate limits retry after that delay. Terminal
-results receive a full second pass to refresh mutable ancestor aggregates.
-Out-of-generation replies fail closed and retain usable older observations. Other
+`scan_status` is polled every 160ms while running; a terminal status triggers one
+`scan_summary` call, so settling costs a handful of IPC calls. Rate limits retry
+after that delay. Out-of-generation replies fail closed and retain usable older observations. Other
 transport failures pause polling and expose Retry connection. Reopening reconnects
 through `scan_current`; it never calls `scan_start`.
 
 Categories partition non-alias regular-file contributions by literal extension:
-Documents, Media, Archives and Other files. No directories are added again. Ranking
-waits until final ingestion; allocations and logical sizes remain separate. The
+Documents, Media, Archives and Other files, summed by native code. No directories
+are added again. Allocations and logical sizes remain separate. The
 largest measured category provides the investigation reason. Development-specific
 recommendations await the recognition/Development producer, rather than inferring
 project ownership from extensions. Unavailable metric values display `Unavailable`.

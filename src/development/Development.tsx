@@ -8,7 +8,7 @@ import { formatBytes } from '../scan/accounting';
 import { EmptyState, Notice, ResultTable, Toolbar } from '../shell/primitives';
 import { ItemInspector } from '../explore/ItemInspector';
 import type { InspectionApi } from '../explore/contract';
-import { pageSize } from '../explore/model';
+import { locationOf, pageSize } from '../explore/model';
 import { useResolvedFindings } from '../explore/useResolvedFindings';
 import {
   familyLabels,
@@ -125,7 +125,7 @@ function DevelopmentSnapshot({
   }, [api, generation, settled, revision]);
   const view = views[tab];
   const artifacts = useMemo(() => report?.findings ?? [], [report]);
-  const resolveIds = useMemo(
+  const baseIds = useMemo(
     () => [
       ...new Set([
         ...artifacts.flatMap((artifact) =>
@@ -133,24 +133,27 @@ function DevelopmentSnapshot({
             ? [artifact.findingId, artifact.projectId]
             : [artifact.findingId],
         ),
+        ...(report?.diagnostics.map((diagnostic) => diagnostic.findingId) ??
+          []),
         ...(view.selectedId ? [view.selectedId] : []),
       ]),
     ],
-    [artifacts, view.selectedId],
+    [artifacts, report, view.selectedId],
   );
   const resolved = useResolvedFindings(
     session.api,
     generation,
-    resolveIds,
+    baseIds,
     settled,
+    true,
   );
   const names = useMemo(
     () =>
       new Map(
-        [...resolved.values()].map((finding) => [
-          finding.id,
-          finding.displayName,
-        ]),
+        [...resolved.keys()].flatMap((id) => {
+          const location = locationOf(resolved, id);
+          return location ? [[id, location.path] as const] : [];
+        }),
       ),
     [resolved],
   );
@@ -229,7 +232,12 @@ function DevelopmentSnapshot({
     }
   }
   function name(artifact: Artifact): string {
-    return names.get(artifact.findingId) ?? artifact.findingId;
+    return (
+      resolved.get(artifact.findingId)?.displayName ?? 'Loading item name…'
+    );
+  }
+  function location(findingId: string): string {
+    return names.get(findingId) ?? 'Resolving location…';
   }
   const projectCount = artifacts.filter(isProject).length;
   const uncommittedCount = artifacts.filter((artifact) =>
@@ -480,7 +488,7 @@ function DevelopmentSnapshot({
                     className="path-text"
                   >
                     {diagnostic.reason.replaceAll('_', ' ')} ·{' '}
-                    {diagnostic.findingId}
+                    {location(diagnostic.findingId)}
                     <button
                       onClick={() => selectArtifact(diagnostic.findingId)}
                     >
@@ -572,6 +580,7 @@ function DevelopmentSnapshot({
                 rows={visibleRows}
                 selectedId={view.selectedId}
                 name={name}
+                location={location}
                 onInspect={selectArtifact}
                 onExplore={onExplore}
                 onProject={showProject}
@@ -822,6 +831,7 @@ function ArtifactGroup({
   rows,
   selectedId,
   name,
+  location,
   onInspect,
   onExplore,
   onProject,
@@ -831,6 +841,7 @@ function ArtifactGroup({
   rows: Artifact[];
   selectedId: string | null;
   name: (artifact: Artifact) => string;
+  location: (findingId: string) => string;
   onInspect: (findingId: string) => void;
   onExplore: (findingId: string) => void;
   onProject: (findingId: string) => void;
@@ -859,7 +870,7 @@ function ArtifactGroup({
               <div>
                 <span className="path-text">{name(artifact)}</span>
                 <span className="secondary finding-path path-text">
-                  {artifact.findingId}
+                  {location(artifact.findingId)}
                 </span>
               </div>
             </div>

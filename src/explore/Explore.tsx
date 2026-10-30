@@ -399,8 +399,7 @@ function ExploreSnapshot({
         )}
         {selectedId && !selection && (
           <Notice>
-            Selected item unavailable in this snapshot. Retained ID:{' '}
-            {selectedId}. Scan again to refresh.
+            Selected item unavailable in this snapshot. Scan again to refresh.
           </Notice>
         )}
         <div
@@ -443,9 +442,8 @@ function ExploreSnapshot({
                     </div>
                     <span className="secondary finding-path path-text">
                       {finding.parentId
-                        ? `${listing?.parentNames[finding.parentId] ?? directory?.displayName ?? 'Parent'} · `
-                        : ''}
-                      {finding.id}
+                        ? `In ${listing?.parentNames[finding.parentId] ?? directory?.displayName ?? 'parent folder'}`
+                        : 'Scan location'}
                     </span>
                   </th>
                   <td className="numeric">

@@ -13,6 +13,7 @@ import {
   fixtureFindings,
   fixtureLocation,
   fixtureProgress,
+  serveScan,
 } from '../scan/fixtures';
 import { ScanSession } from '../scan/session';
 import { ScanContext } from '../scan/useScanSession';
@@ -101,12 +102,7 @@ function mount(
     scope: { id: 'scope', roots: [fixtureLocation], exclusions: [] },
     progress: fixtureProgress(),
   });
-  api.page = async (_generation, offset) => ({
-    progress: fixtureProgress(),
-    offset,
-    nextOffset: null,
-    findings: [],
-  });
+  serveScan(api, fixtureProgress(), entries);
   const session = new ScanSession(api);
   const disconnect = session.connect();
   return { api, session, disconnect };

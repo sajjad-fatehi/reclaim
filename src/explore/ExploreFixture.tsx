@@ -6,6 +6,7 @@ import {
   fixtureFindings,
   fixtureLocation,
   fixtureProgress,
+  serveScan,
 } from '../scan/fixtures';
 import { createTreeApi, pathOf } from './treeApi';
 import type { InspectionApi } from './contract';
@@ -90,12 +91,7 @@ scanApi.current = async () => ({
   scope: { id: 'fixture', roots: [fixtureLocation], exclusions: [] },
   progress: fixtureProgress('partial'),
 });
-scanApi.page = async (_generation, offset) => ({
-  progress: fixtureProgress('partial'),
-  offset,
-  nextOffset: null,
-  findings: [],
-});
+serveScan(scanApi, fixtureProgress('partial'), findings);
 const inspectionApi: InspectionApi = {
   inspect: async (_generation, findingId) => ({
     findingId,

@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Finding, ScanApi } from '../scan/contract';
+import { locationOf } from './model';
 import { resolveFindings } from './useListing';
 
-/** Resolves finding ids to findings through `scan_findings`, keeping what was already resolved. */
+/**
+ * Resolves finding ids to findings through `scan_findings`, keeping what was already resolved.
+ * With `followParents`, each id's nearest unresolved ancestor is fetched too, a bounded
+ * number of levels (see `locationOf`), so rows can show a readable location.
+ */
 export function useResolvedFindings(
   api: ScanApi,
   generation: number,
   ids: readonly string[],
   enabled: boolean,
+  followParents = false,
 ): Map<string, Finding> {
   const [resolved, setResolved] = useState(() => new Map<string, Finding>());
   const requested = useRef(new Set<string>());
@@ -16,7 +22,13 @@ export function useResolvedFindings(
   useEffect(() => {
     if (!enabled) return;
     const pending = requested.current;
-    const missing = [...new Set(ids)].filter((id) => !pending.has(id));
+    const wanted = new Set(ids);
+    if (followParents)
+      for (const id of ids) {
+        const next = locationOf(resolved, id)?.missingId;
+        if (next) wanted.add(next);
+      }
+    const missing = [...wanted].filter((id) => !pending.has(id));
     if (missing.length === 0) return;
     for (const id of missing) pending.add(id);
     let active = true;
@@ -41,7 +53,7 @@ export function useResolvedFindings(
     };
     // `ids` is represented by `signature`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, generation, signature, enabled]);
+  }, [api, generation, signature, enabled, followParents, resolved]);
 
   return resolved;
 }

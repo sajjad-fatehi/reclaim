@@ -57,3 +57,36 @@ export function sortFindings(findings: Finding[], sort: SortKey): Finding[] {
     return comparison || left.id.localeCompare(right.id);
   });
 }
+
+export const ancestorDepthLimit = 4;
+export interface Location {
+  /** Slash-joined names from the nearest resolved ancestors down to the item; prefixed with an ellipsis when truncated. */
+  path: string;
+  /** Next ancestor id still to resolve, or null when the chain is complete or bounded. */
+  missingId: string | null;
+}
+/** Builds a readable location from already-resolved findings, bounded to `ancestorDepthLimit` ancestors. */
+export function locationOf(
+  findings: ReadonlyMap<string, Finding>,
+  findingId: string,
+): Location | null {
+  let current = findings.get(findingId);
+  if (!current) return null;
+  const names = [current.displayName];
+  const visited = new Set([current.id]);
+  for (let depth = 0; depth < ancestorDepthLimit; depth += 1) {
+    if (current.parentId === null)
+      return { path: names.reverse().join('/'), missingId: null };
+    const parent = findings.get(current.parentId);
+    if (!parent)
+      return {
+        path: `…/${names.reverse().join('/')}`,
+        missingId: current.parentId,
+      };
+    if (visited.has(parent.id)) break;
+    visited.add(parent.id);
+    names.push(parent.displayName);
+    current = parent;
+  }
+  return { path: `…/${names.reverse().join('/')}`, missingId: null };
+}

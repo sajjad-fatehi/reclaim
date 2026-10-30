@@ -13,6 +13,7 @@ import {
   createFixtureApi,
   fixtureLocation,
   fixtureProgress,
+  serveScan,
   fixtureFindings,
 } from '../scan/fixtures';
 import { ScanApplication } from '../scan/ScanApplication';
@@ -97,12 +98,7 @@ async function mount(api: CleanupApi): Promise<ScanSession> {
     scope: { id: 'fixture', roots: [fixtureLocation], exclusions: [] },
     progress: fixtureProgress(),
   });
-  native.page = async () => ({
-    progress: fixtureProgress(),
-    offset: 0,
-    nextOffset: null,
-    findings: fixtureFindings(),
-  });
+  serveScan(native, fixtureProgress(), fixtureFindings());
   const session = new ScanSession(native);
   disconnects.push(session.connect());
   await new Promise<void>((resolve) => setTimeout(resolve, 400));

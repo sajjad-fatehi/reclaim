@@ -256,6 +256,7 @@ pub struct ScanData {
     pub records: Vec<Record>,
     pub top_files: Vec<TopFile>,
     pub recognition: crate::recognition::Recognition,
+    pub pins_exhausted: bool,
 }
 
 impl ScanData {
@@ -283,6 +284,7 @@ impl ScanData {
             records: Vec::new(),
             top_files: Vec::new(),
             recognition: crate::recognition::Recognition::default(),
+            pins_exhausted: false,
         }
     }
 
@@ -468,55 +470,6 @@ const FILE_IDENTITY_CAP: usize = 2_000_000;
 const CATEGORY_TOP_FILES: usize = 50;
 const PUBLISH_INTERVAL: u64 = 4_096;
 
-/// Directory names recognition treats as generated/shared content, plus common worktree and
-/// build-cache roots. Recognition probes these structures after the walk.
-const PINNED_DIRECTORIES: [&str; 11] = [
-    "node_modules",
-    ".venv",
-    "venv",
-    "target",
-    ".git",
-    ".next",
-    ".nuxt",
-    ".svelte-kit",
-    ".turbo",
-    ".worktrees",
-    "DerivedData",
-];
-
-/// Marker files recognition reads or probes by name.
-const PINNED_FILES: [&str; 17] = [
-    "package.json",
-    "Cargo.toml",
-    "pyproject.toml",
-    ".git",
-    "CACHEDIR.TAG",
-    "pyvenv.cfg",
-    ".rustc_info.json",
-    ".package-lock.json",
-    ".modules.yaml",
-    ".yarn-integrity",
-    "README",
-    "HEAD",
-    "commondir",
-    "gitdir",
-    "locked",
-    "index.lock",
-    "config",
-];
-
-/// Minimal default until recognition owns the pin list.
-pub fn default_pin(name: &OsStr, kind: Kind) -> bool {
-    let Some(name) = name.to_str() else {
-        return false;
-    };
-    match kind {
-        Kind::Directory => PINNED_DIRECTORIES.contains(&name),
-        Kind::File => PINNED_FILES.contains(&name) || name == "config.worktree",
-        _ => false,
-    }
-}
-
 /// Decides which measured nodes stay retained; totals never depend on it.
 #[derive(Clone, Copy, Debug)]
 pub struct RetentionPolicy {
@@ -527,7 +480,8 @@ pub struct RetentionPolicy {
     /// Largest files kept per directory (subject to `threshold`).
     pub top_k: usize,
     pub node_budget: usize,
-    pub pin_predicate: fn(&OsStr, Kind) -> bool,
+    /// Receives the containing directory path, the entry name and its kind.
+    pub pin_predicate: fn(&Path, &OsStr, Kind) -> bool,
 }
 
 impl Default for RetentionPolicy {
@@ -537,7 +491,7 @@ impl Default for RetentionPolicy {
             threshold: RETENTION_THRESHOLD,
             top_k: RETENTION_TOP_K,
             node_budget: RETENTION_NODE_BUDGET,
-            pin_predicate: default_pin,
+            pin_predicate: crate::recognition::is_pinned,
         }
     }
 }
@@ -550,7 +504,7 @@ impl RetentionPolicy {
             threshold: 0,
             top_k: usize::MAX,
             node_budget,
-            pin_predicate: default_pin,
+            pin_predicate: crate::recognition::is_pinned,
         }
     }
 }
@@ -662,6 +616,7 @@ struct Scanner {
     prune_at: usize,
     nodes: usize,
     pins: usize,
+    pins_exhausted: bool,
     budget_reached: bool,
     directories: HashSet<(rustix::fs::Dev, u64)>,
     files: HashSet<(rustix::fs::Dev, u64)>,
@@ -776,6 +731,7 @@ impl Scanner {
             prune_at: policy.node_budget,
             nodes: 0,
             pins: 0,
+            pins_exhausted: false,
             budget_reached: false,
             directories: HashSet::new(),
             files: HashSet::new(),
@@ -817,12 +773,13 @@ impl Scanner {
         }
         self.publish();
         let recognition =
-            crate::recognition::recognize(self.generation, &self.records, &self.cancel);
+            crate::recognition::recognize(&self.records, &self.cancel, self.pins_exhausted);
         let top_files: Vec<TopFile> = self.top.iter().flatten().cloned().collect();
         let mut data = lock(&self.data);
         data.records = std::mem::take(&mut self.records);
         data.top_files = top_files;
         data.recognition = recognition;
+        data.pins_exhausted = self.pins_exhausted;
         let cancelled = self.cancel.load(Ordering::Relaxed);
         data.progress.status = if cancelled {
             Status::Cancelled
@@ -914,6 +871,7 @@ impl Scanner {
     fn grant_pin(&mut self, wanted: bool) -> bool {
         let granted = wanted && self.pins < PIN_BUDGET;
         self.pins += usize::from(granted);
+        self.pins_exhausted |= wanted && !granted;
         granted
     }
 
@@ -1039,7 +997,8 @@ impl Scanner {
                 self.nodes -= 1;
             }
         }
-        let pin_wanted = issue.is_some() || (self.policy.pin_predicate)(name, Kind::Directory);
+        let pin_wanted =
+            issue.is_some() || (self.policy.pin_predicate)(&self.path, name, Kind::Directory);
         let pinned = self.grant_pin(pin_wanted) || depth == 0;
         let retain = pinned
             || depth <= self.policy.depth
@@ -1296,7 +1255,7 @@ impl Scanner {
         if flagged {
             self.issues += 1;
         }
-        let pin_wanted = flagged || (self.policy.pin_predicate)(leaf.name, leaf.kind);
+        let pin_wanted = flagged || (self.policy.pin_predicate)(&self.path, leaf.name, leaf.kind);
         let pinned = self.grant_pin(pin_wanted);
         let keep_sized = !pinned && leaf.allocated >= self.threshold && self.policy.top_k > 0;
         let frame = top_frame(&mut self.frames);
@@ -1394,7 +1353,7 @@ fn same_mount(parent: &File, directory: &File) -> io::Result<bool> {
     Ok(parent_mount.f_fsid == child_mount.f_fsid)
 }
 
-fn kind(metadata: &Stat) -> Kind {
+pub(crate) fn kind(metadata: &Stat) -> Kind {
     let file_type = fs::FileType::from_raw_mode(metadata.st_mode);
     match file_type {
         fs::FileType::Directory => Kind::Directory,
@@ -1444,7 +1403,7 @@ mod tests {
         measure_with(paths, RetentionPolicy::exhaustive(usize::MAX))
     }
 
-    fn no_pins(_: &OsStr, _: Kind) -> bool {
+    fn no_pins(_: &Path, _: &OsStr, _: Kind) -> bool {
         false
     }
 
@@ -1906,7 +1865,7 @@ mod tests {
                     threshold: 4_096,
                     top_k: 2,
                     node_budget: 25,
-                    pin_predicate: default_pin,
+                    pin_predicate: crate::recognition::is_pinned,
                 },
                 RetentionPolicy {
                     depth: 0,
@@ -1971,7 +1930,7 @@ mod tests {
             threshold: 1 << 20,
             top_k: 2,
             node_budget: 8,
-            pin_predicate: default_pin,
+            pin_predicate: crate::recognition::is_pinned,
         };
         let data = measure_with(std::slice::from_ref(&path), policy);
         let data = lock(&data);

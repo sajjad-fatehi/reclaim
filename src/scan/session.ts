@@ -7,12 +7,15 @@ import type {
   Progress,
   ScanApi,
   Scope,
+  Summary,
 } from './contract';
 
 export interface ScanSnapshot {
   scope: Scope;
   progress: Progress;
+  /** Bounded summary findings: roots, top level and issue examples. */
   findings: Finding[];
+  summary: Summary | null;
   settled: boolean;
 }
 export interface Investigation {
@@ -58,6 +61,17 @@ export function validExclusion(path: string): boolean {
   );
 }
 
+function summaryFindings(summary: Summary): Finding[] {
+  const unique = new Map<string, Finding>();
+  for (const finding of [
+    ...summary.roots,
+    ...summary.topLevel,
+    ...summary.issues.flatMap((group) => group.examples),
+  ])
+    unique.set(finding.id, finding);
+  return [...unique.values()];
+}
+
 export class ScanSession {
   private state: ScanState = {
     preferences: emptyPreferences,
@@ -78,9 +92,6 @@ export class ScanSession {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private initialized: Promise<void> | null = null;
   private active = false;
-  private offset = 0;
-  private finalPass = false;
-  private records = new Map<string, Finding>();
   private pendingWrite: Promise<void> = Promise.resolve();
   private revision = 0;
   private polling = false;
@@ -135,6 +146,7 @@ export class ScanSession {
             scope: current.scope,
             progress: current.progress,
             findings: [],
+            summary: null,
             settled: false,
           },
         });
@@ -248,12 +260,15 @@ export class ScanSession {
         preferences.exclusions,
       );
       const progress = await this.api.start(scope.id);
-      this.offset = 0;
-      this.finalPass = false;
-      this.records.clear();
       this.update({
         previous: this.state.snapshot ?? this.state.previous,
-        snapshot: { scope, progress, findings: [], settled: false },
+        snapshot: {
+          scope,
+          progress,
+          findings: [],
+          summary: null,
+          settled: false,
+        },
         stale:
           this.state.preferences.roots !== preferences.roots ||
           this.state.preferences.exclusions !== preferences.exclusions,
@@ -294,6 +309,11 @@ export class ScanSession {
   investigate = (investigation: Investigation): void =>
     this.update({ investigation });
   clearInvestigation = (): void => this.update({ investigation: null });
+  private isCurrent(generation: number): boolean {
+    return (
+      this.active && this.state.snapshot?.progress.generation === generation
+    );
+  }
   private schedule(): void {
     clearTimeout(this.timer);
     if (!this.active || !this.state.snapshot || this.state.snapshot.settled)
@@ -307,44 +327,35 @@ export class ScanSession {
     const generation = snapshot.progress.generation;
     this.polling = true;
     try {
-      const page = await this.api.page(generation, this.offset);
-      if (
-        !this.active ||
-        this.state.snapshot?.progress.generation !== generation
-      )
+      const progress = await this.api.status(generation);
+      if (!this.isCurrent(generation)) return;
+      if (progress.generation !== generation)
+        throw { code: 'stale_generation' };
+      if (progress.status === 'running') {
+        this.update({ snapshot: { ...snapshot, progress } });
+        this.schedule();
         return;
+      }
+      const summary = await this.api.summary(generation);
+      if (!this.isCurrent(generation)) return;
       if (
-        page.progress.generation !== generation ||
-        page.offset !== this.offset ||
-        page.findings.some(
-          (finding) => !finding.id.startsWith(`${generation}:`),
-        )
+        summary.generation !== generation ||
+        summary.progress.generation !== generation
       )
         throw { code: 'stale_generation' };
-      for (const finding of page.findings)
-        this.records.set(finding.id, finding);
-      const terminal = page.progress.status !== 'running';
-      let settled = false;
-      if (terminal && !this.finalPass) {
-        this.finalPass = true;
-        this.offset = 0;
-      } else if (page.nextOffset !== null) {
-        this.offset = page.nextOffset;
-      } else if (terminal) {
-        settled = true;
-      } else {
-        this.offset = 0;
-      }
+      const findings = summaryFindings(summary);
+      if (findings.some((finding) => !finding.id.startsWith(`${generation}:`)))
+        throw { code: 'stale_generation' };
       this.update({
         snapshot: {
           scope: snapshot.scope,
-          progress: page.progress,
-          findings: [...this.records.values()],
-          settled,
+          progress: summary.progress,
+          findings,
+          summary,
+          settled: true,
         },
-        cancelling: terminal ? false : this.state.cancelling,
+        cancelling: false,
       });
-      this.schedule();
     } catch (error) {
       if (this.state.snapshot?.progress.generation !== generation) return;
       if (errorCode(error) === 'rate_limited') {

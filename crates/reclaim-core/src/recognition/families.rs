@@ -21,24 +21,10 @@ impl Recognizer<'_> {
             return;
         }
         let name = record.name.to_string_lossy();
-        if matches!(
-            name.as_ref(),
-            ".env"
-                | ".env.local"
-                | ".env.production"
-                | ".ssh"
-                | ".aws"
-                | "credentials"
-                | "auth.json"
-                | "History"
-                | "Backups"
-                | "workspaceStorage"
-                | "globalStorage"
-                | "User"
-                | "sessions"
-                | "projects"
-        ) || name.ends_with(".pem")
-            || name.ends_with(".key")
+        if pins::PROTECTED_NAMES.contains(&name.as_ref())
+            || pins::PROTECTED_SUFFIXES
+                .iter()
+                .any(|suffix| name.ends_with(suffix))
         {
             self.add(
                 index,
@@ -143,7 +129,7 @@ impl Recognizer<'_> {
                         };
                         for dependency in dependencies.keys().take(256) {
                             let Some(installed) =
-                                self.child(index, &format!("{dependency}/package.json"))
+                                self.probe(index, &format!("{dependency}/package.json"))
                             else {
                                 continue;
                             };
@@ -217,23 +203,18 @@ impl Recognizer<'_> {
                     .is_some_and(Value::is_string)
             })
         };
-        for (directory, dependency, marker) in [
-            (".next", "next", "BUILD_ID"),
-            (".turbo", "turbo", "cache"),
-            (".nuxt", "nuxt", "nuxt.json"),
-            (".svelte-kit", "@sveltejs/kit", "tsconfig.json"),
-        ] {
+        for (directory, dependency, marker) in pins::FRAMEWORK_OUTPUTS {
             if name != directory || !dependencies(dependency) {
                 continue;
             }
-            if let Some(metadata) = self.child(index, marker) {
+            if let Some(metadata) = self.probe(index, marker) {
                 let valid = if marker.ends_with(".json") {
                     self.json(metadata).is_some()
                 } else if marker == "BUILD_ID" {
                     self.text(metadata)
                         .is_some_and(|text| !text.trim().is_empty())
                 } else {
-                    self.records[metadata].finding.kind == Kind::Directory
+                    self.kind_of(metadata) == Kind::Directory
                 };
                 if valid {
                     self.add(
@@ -260,15 +241,7 @@ impl Recognizer<'_> {
                         })
                     })
                 });
-            if explicit_log
-                && self.children_by_parent[index].iter().any(|child| {
-                    self.records[*child].finding.kind == Kind::File
-                        && self.records[*child]
-                            .name
-                            .to_string_lossy()
-                            .ends_with(".log")
-                })
-            {
+            if explicit_log && self.has_log_file(index) {
                 self.add(
                     index,
                     Family::ProjectLogs,
@@ -281,6 +254,13 @@ impl Recognizer<'_> {
         }
     }
 
+    fn has_log_file(&mut self, index: usize) -> bool {
+        self.list_children(index).into_iter().any(|child| {
+            self.kind_of(child) == Kind::File
+                && self.name_of(child).to_string_lossy().ends_with(".log")
+        })
+    }
+
     fn has_cache_tag(&mut self, index: usize) -> Option<usize> {
         let tag = self.child(index, "CACHEDIR.TAG")?;
         self.text(tag)
@@ -289,49 +269,28 @@ impl Recognizer<'_> {
     }
 
     fn tool_store(&mut self, index: usize) {
-        let Some(path) = self.path(index) else { return };
-        let name = Path::new(&self.records[index].name)
-            .file_name()
-            .unwrap_or_else(|| OsStr::new(""))
-            .to_string_lossy();
-        let tagged = self.has_cache_tag(index);
-        let defaults: &[(Family, &[&str], &[&str])] = &[
-            (
-                Family::Npm,
-                &[".npm"],
-                &["_cacache/index-v5", "_cacache/content-v2"],
-            ),
-            (Family::Pnpm, &["pnpm/store", ".pnpm-store"], &["v3/files"]),
-            (Family::Yarn, &["Yarn", "yarn/v6", ".yarn/cache"], &[]),
-            (Family::Bun, &[".bun/install/cache"], &[]),
-            (Family::Pip, &["Caches/pip", ".cache/pip"], &["http-v2"]),
-            (Family::Uv, &["Caches/uv", ".cache/uv"], &["wheels-v5"]),
-            (Family::Go, &["go/pkg/mod"], &["cache/download"]),
-            (
-                Family::Cargo,
-                &[".cargo/registry"],
-                &["cache", "src", "index"],
-            ),
-            (Family::Homebrew, &["Caches/Homebrew"], &["downloads"]),
-        ];
-        for (family, suffixes, markers) in defaults {
-            let location_matches = suffixes.iter().any(|suffix| path.ends_with(suffix));
-            if !location_matches {
+        let name = self.name_of(index).to_string_lossy().into_owned();
+        for store in &pins::TOOL_STORES {
+            if !store
+                .suffixes
+                .iter()
+                .any(|suffix| self.ends_with(index, suffix))
+            {
                 continue;
             }
-            if markers
+            if store
+                .markers
                 .iter()
-                .all(|marker| self.child(index, marker).is_some())
+                .all(|marker| self.probe(index, marker).is_some())
             {
-                let evidence = if let Some(marker) = markers.first() {
-                    self.child(index, marker)
-                } else {
-                    self.package_cache_entry(index, *family)
+                let evidence = match store.markers.first() {
+                    Some(marker) => self.probe(index, marker),
+                    None => self.package_cache_entry(index, store.family),
                 };
                 if let Some(evidence) = evidence {
                     self.add(
                         index,
-                        *family,
+                        store.family,
                         Nature::SharedStore,
                         evidence,
                         "conventional_location_and_tool_layout",
@@ -339,10 +298,10 @@ impl Recognizer<'_> {
                     );
                 }
             }
-            if let Some(tag) = tagged {
+            if let Some(tag) = self.has_cache_tag(index) {
                 self.add(
                     index,
-                    *family,
+                    store.family,
                     Nature::SharedStore,
                     tag,
                     "conventional_location_and_cache_signature",
@@ -350,19 +309,24 @@ impl Recognizer<'_> {
                 );
             }
         }
-        for (variable, family) in [
-            ("npm_config_cache", Family::Npm),
-            ("PNPM_STORE_DIR", Family::Pnpm),
-            ("YARN_CACHE_FOLDER", Family::Yarn),
-            ("BUN_INSTALL_CACHE_DIR", Family::Bun),
-            ("PIP_CACHE_DIR", Family::Pip),
-            ("UV_CACHE_DIR", Family::Uv),
-            ("GOMODCACHE", Family::Go),
-            ("GOCACHE", Family::Go),
-            ("CARGO_HOME", Family::Cargo),
-            ("HOMEBREW_CACHE", Family::Homebrew),
-        ] {
-            if std::env::var_os(variable).is_some_and(|configured| Path::new(&configured) == path) {
+        let own_name = self.name_of(index).to_owned();
+        let matching: Vec<Family> = self
+            .store_locations
+            .iter()
+            .filter(|(_, location)| location.file_name() == Some(own_name.as_os_str()))
+            .map(|(family, _)| *family)
+            .collect();
+        if !matching.is_empty() {
+            let path = self.path(index);
+            let configured: Vec<Family> = self
+                .store_locations
+                .iter()
+                .filter(|(family, location)| {
+                    matching.contains(family) && path.as_deref() == Some(location.as_path())
+                })
+                .map(|(family, _)| *family)
+                .collect();
+            for family in configured {
                 self.add(
                     index,
                     family,
@@ -375,10 +339,10 @@ impl Recognizer<'_> {
                 self.result.findings[artifact].confidence = Confidence::Contextual;
             }
         }
-        if (path.ends_with(".cache/go-build") || name == "go-build")
-            && self.child(index, "README").is_some()
+        if (self.ends_with(index, ".cache/go-build") || name == pins::GO_BUILD_CACHE)
+            && self.probe(index, "README").is_some()
         {
-            let metadata = self.child(index, "README").unwrap();
+            let metadata = self.probe(index, "README").unwrap();
             if self.text(metadata).is_some_and(|text| {
                 text.contains("Go build cache")
                     || text.contains("cached build artifacts from the Go build system")
@@ -393,38 +357,36 @@ impl Recognizer<'_> {
                 );
             }
         }
-        if self.child(index, "bin/node").is_some() {
-            if let Some(header) = self.child(index, "include/node/node_version.h") {
+        let conventional = self
+            .parent_of(index)
+            .is_some_and(|parent| self.ends_with(parent, pins::NODE_VERSIONS));
+        if conventional && self.probe(index, "bin/node").is_some() {
+            if let Some(header) = self.probe(index, "include/node/node_version.h") {
                 if self
                     .text(header)
                     .is_some_and(|text| text.contains("#define NODE_MAJOR_VERSION"))
                 {
-                    let conventional = path
-                        .parent()
-                        .is_some_and(|path| path.ends_with("versions/node"));
-                    if conventional {
-                        self.add(
-                            index,
-                            Family::Nvm,
-                            Nature::Runtime,
-                            header,
-                            "node_distribution_in_nvm_versions",
-                            false,
-                        );
-                    }
+                    self.add(
+                        index,
+                        Family::Nvm,
+                        Nature::Runtime,
+                        header,
+                        "node_distribution_in_nvm_versions",
+                        false,
+                    );
                 }
             }
         }
     }
 
     fn package_cache_entry(&mut self, index: usize, family: Family) -> Option<usize> {
-        for child in self.children_by_parent[index].clone() {
-            let name = self.records[child].name.to_string_lossy();
+        for child in self.list_children(index) {
+            let name = self.name_of(child).to_string_lossy().into_owned();
             if family == Family::Yarn && (name.starts_with("npm-") || name.ends_with(".zip")) {
                 return Some(child);
             }
             if family == Family::Bun {
-                if let Some(manifest) = self.child(child, "package.json") {
+                if let Some(manifest) = self.probe(child, "package.json") {
                     if self.json(manifest).is_some_and(|value| {
                         value.get("name").is_some_and(Value::is_string)
                             && value.get("version").is_some_and(Value::is_string)
@@ -439,15 +401,11 @@ impl Recognizer<'_> {
 
     fn configured_store(&mut self, index: usize) {
         let name = self.records[index].name.to_string_lossy();
-        let configuration = match name.as_ref() {
-            ".npmrc" => Some((Family::Npm, "cache", false)),
-            ".yarnrc.yml" => Some((Family::Yarn, "cacheFolder", false)),
-            "pip.conf" => Some((Family::Pip, "cache-dir", false)),
-            "uv.toml" => Some((Family::Uv, "cache-dir", true)),
-            "bunfig.toml" => Some((Family::Bun, "install.cache.dir", true)),
-            _ => None,
-        };
-        let Some((family, key, is_toml)) = configuration else {
+        let Some((_, family, key, is_toml)) = pins::TOOL_CONFIGURATIONS
+            .iter()
+            .find(|(file, ..)| *file == name.as_ref())
+            .copied()
+        else {
             return;
         };
         let Some(content) = self.text(index) else {
@@ -494,11 +452,15 @@ impl Recognizer<'_> {
             self.diagnostic(index, "unsupported_configuration_path");
             return;
         };
-        let Some(target) = self.paths.get(&path).copied() else {
+        let Some(target) = self.locate(&path) else {
             self.diagnostic(index, "configured_location_outside_scan_or_unavailable");
             return;
         };
-        if self.records[target].finding.kind != Kind::Directory {
+        if self.record(target).is_none() {
+            self.diagnostic(index, "configured_location_not_retained");
+            return;
+        }
+        if self.kind_of(target) != Kind::Directory {
             self.diagnostic(index, "configured_location_not_directory");
             return;
         }
@@ -516,23 +478,19 @@ impl Recognizer<'_> {
     }
 
     fn editor(&mut self, index: usize) {
-        let Some(path) = self.path(index) else { return };
-        for (suffix, family) in [
-            ("Application Support/Code", Family::VsCode),
-            ("Application Support/Cursor", Family::Cursor),
-        ] {
-            if !path.ends_with(suffix) {
+        for (suffix, family) in pins::EDITOR_APPLICATIONS {
+            if !self.ends_with(index, suffix) {
                 continue;
             }
-            let Some(settings) = self.child(index, "User/settings.json") else {
+            let Some(settings) = self.probe(index, "User/settings.json") else {
                 continue;
             };
             if self.json(settings).is_none() {
                 continue;
             }
-            if self.child(index, "User").is_some()
-                && (self.child(index, "logs").is_some()
-                    || self.child(index, "CachedData").is_some())
+            if self.probe(index, "User").is_some()
+                && (self.probe(index, "logs").is_some()
+                    || self.probe(index, "CachedData").is_some())
             {
                 self.add(
                     index,
@@ -545,18 +503,18 @@ impl Recognizer<'_> {
                 self.editor_children(index, family);
             }
         }
-        let name = self.records[index].name.to_string_lossy();
-        if path
-            .components()
-            .any(|component| component.as_os_str() == "JetBrains")
-            && (name.starts_with("IntelliJIdea")
-                || name.starts_with("PyCharm")
-                || name.starts_with("WebStorm")
-                || name.starts_with("RustRover"))
+        let name = self.name_of(index).to_string_lossy().into_owned();
+        if pins::JETBRAINS_PRODUCTS
+            .iter()
+            .any(|product| name.starts_with(product))
+            && self.path(index).is_some_and(|path| {
+                path.components()
+                    .any(|component| component.as_os_str() == "JetBrains")
+            })
         {
             let marker = self
-                .child(index, "options/ide.general.xml")
-                .or_else(|| self.child(index, ".home"));
+                .probe(index, "options/ide.general.xml")
+                .or_else(|| self.probe(index, ".home"));
             if let Some(metadata) = marker {
                 if self.text(metadata).is_some_and(|text| {
                     text.contains("<application>") || Path::new(text.trim()).is_absolute()
@@ -573,15 +531,11 @@ impl Recognizer<'_> {
                 }
             }
         }
-        for (suffix, family, marker) in [
-            (".claude", Family::Claude, "settings.json"),
-            (".codex", Family::Codex, "config.toml"),
-            (".Codex", Family::Codex, "config.toml"),
-        ] {
-            if !path.ends_with(suffix) {
+        for (suffix, family, marker) in pins::CODING_TOOLS {
+            if !self.ends_with(index, suffix) {
                 continue;
             }
-            let Some(metadata) = self.child(index, marker) else {
+            let Some(metadata) = self.probe(index, marker) else {
                 continue;
             };
             let valid = if marker.ends_with("json") {
@@ -605,12 +559,7 @@ impl Recognizer<'_> {
     }
 
     fn editor_children(&mut self, index: usize, family: Family) {
-        for (name, nature) in [
-            ("logs", Nature::Logs),
-            ("CachedData", Nature::Build),
-            ("Cache", Nature::Build),
-            ("caches", Nature::Build),
-        ] {
+        for (name, nature) in pins::EDITOR_CHILDREN {
             if let Some(child) = self.child(index, name) {
                 self.add(
                     child,

@@ -10,14 +10,17 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ScanSession } from './session';
 import {
   createFixtureApi,
+  fixtureCategories,
   fixtureFindings,
   fixtureLocation,
   fixtureProgress,
+  serveScan,
+  summaryOf,
 } from './fixtures';
 import { ScanProvider } from './context';
 import { Overview } from './Overview';
 import { categorize, formatBytes } from './accounting';
-import type { ScanApi } from './contract';
+import type { CategoryTotal, ScanApi } from './contract';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -40,12 +43,15 @@ test('scope/exclusion/start/progressive/terminal/cancel are user actions; restar
   const register = vi.spyOn(api, 'register');
   const cancel = vi.spyOn(api, 'cancel');
   let cancelled = false;
-  vi.spyOn(api, 'page').mockImplementation(async (generation, offset) => ({
-    progress: fixtureProgress(cancelled ? 'cancelled' : 'running', generation),
-    offset,
-    nextOffset: null,
-    findings: fixtureFindings(generation),
-  }));
+  vi.spyOn(api, 'status').mockImplementation(async (generation) =>
+    fixtureProgress(cancelled ? 'cancelled' : 'running', generation),
+  );
+  vi.spyOn(api, 'summary').mockImplementation(async (generation) =>
+    summaryOf(
+      fixtureProgress('cancelled', generation),
+      fixtureFindings(generation),
+    ),
+  );
   cancel.mockImplementation(async (generation) => {
     cancelled = true;
     return fixtureProgress('running', generation);
@@ -61,7 +67,7 @@ test('scope/exclusion/start/progressive/terminal/cancel are user actions; restar
     [{ relativePath: 'cache', subtree: true }],
   );
   await vi.advanceTimersByTimeAsync(160);
-  expect(session.getSnapshot().snapshot?.findings).toHaveLength(2);
+  expect(session.getSnapshot().snapshot?.progress.status).toBe('running');
   expect(session.getSnapshot().snapshot?.settled).toBe(false);
   session.editPreferences({ exclusions: [] });
   expect(session.getSnapshot().snapshot?.scope.exclusions).toHaveLength(1);
@@ -79,17 +85,11 @@ test('scope/exclusion/start/progressive/terminal/cancel are user actions; restar
 
 test('old generation responses never overwrite current observations; errors retain data', async () => {
   const api = createFixtureApi();
-  const page = vi.spyOn(api, 'page');
   const { session, disconnect } = await initialize(api);
   await session.start();
   await vi.advanceTimersByTimeAsync(320);
   expect(session.getSnapshot().snapshot?.settled).toBe(true);
-  page.mockResolvedValue({
-    progress: fixtureProgress('complete', 1),
-    offset: 0,
-    nextOffset: null,
-    findings: fixtureFindings(1),
-  });
+  vi.spyOn(api, 'status').mockResolvedValue(fixtureProgress('complete', 1));
   await session.start();
   await vi.advanceTimersByTimeAsync(160);
   expect(session.getSnapshot().snapshot?.progress.generation).toBe(2);
@@ -99,29 +99,31 @@ test('old generation responses never overwrite current observations; errors reta
   disconnect();
 });
 
-test('terminal pages re-read updated ancestors and rate limit retries remain serialized', async () => {
+test('rate limits retry transparently and settling takes a handful of IPC calls', async () => {
   const api = createFixtureApi();
-  const page = vi.spyOn(api, 'page');
-  page.mockRejectedValueOnce({ code: 'rate_limited' });
-  page.mockResolvedValueOnce({
-    progress: fixtureProgress('running'),
-    offset: 0,
-    nextOffset: null,
-    findings: [
-      {
-        ...fixtureFindings()[0]!,
-        logicalBytes: '0',
-        allocatedBytes: '0',
-        complete: false,
-      },
-    ],
-  });
+  const status = vi.spyOn(api, 'status');
+  const summary = vi.spyOn(api, 'summary');
+  const children = vi.spyOn(api, 'children');
+  const search = vi.spyOn(api, 'search');
+  const findings = vi.spyOn(api, 'findings');
+  status.mockRejectedValueOnce({ code: 'rate_limited' });
+  status.mockResolvedValueOnce(fixtureProgress('running'));
+  summary.mockRejectedValueOnce({ code: 'rate_limited' });
   const { session, disconnect } = await initialize(api);
   await session.start();
-  await vi.advanceTimersByTimeAsync(640);
-  expect(page).toHaveBeenCalledTimes(4);
-  expect(session.getSnapshot().snapshot?.findings[0]?.logicalBytes).toBe('5');
-  expect(session.getSnapshot().snapshot?.settled).toBe(true);
+  await vi.advanceTimersByTimeAsync(1_000);
+  const state = session.getSnapshot();
+  expect(state.error).toBeNull();
+  expect(state.snapshot?.settled).toBe(true);
+  expect(state.snapshot?.summary?.generation).toBe(1);
+  const calls = status.mock.calls.length + summary.mock.calls.length;
+  expect(calls).toBeLessThanOrEqual(6);
+  expect(summary).toHaveBeenCalledTimes(2);
+  expect(children).not.toHaveBeenCalled();
+  expect(search).not.toHaveBeenCalled();
+  expect(findings).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(status.mock.calls.length + summary.mock.calls.length).toBe(calls);
   disconnect();
 });
 
@@ -187,17 +189,25 @@ test.each(['empty', 'denied', 'cancelled', 'failed'] as const)(
         : outcome === 'denied'
           ? 'partial'
           : outcome;
-    vi.spyOn(api, 'page').mockImplementation(async (_generation, offset) => ({
-      progress: {
-        ...fixtureProgress(status),
-        logicalBytes: '0',
-        allocatedBytes: '0',
-        issueCount: outcome === 'empty' ? 0 : 1,
+    const progress = {
+      ...fixtureProgress(status),
+      logicalBytes: '0',
+      allocatedBytes: '0',
+      issueCount: outcome === 'empty' ? 0 : 1,
+    };
+    progress.volumes = [
+      {
+        ...progress.volumes[0]!,
+        scopeLogicalBytes: '0',
+        scopeAllocatedBytes: '0',
+        categories: fixtureCategories('0').map((category) => ({
+          ...category,
+          logicalBytes: '0',
+          count: 0,
+        })),
       },
-      offset,
-      nextOffset: null,
-      findings,
-    }));
+    ];
+    serveScan(api, progress, findings, []);
     render(
       <ScanProvider api={api}>
         <Overview onInvestigate={() => undefined} />
@@ -253,27 +263,75 @@ test('corrupt settings and missing roots stay actionable without auto-start; fai
   expect(screen.queryByText(/private path/)).toBeNull();
 });
 
-test('categories partition unique files, preserve u64 precision and unknown metrics', () => {
-  const file = fixtureFindings()[1]!;
-  const categories = categorize([
-    ...fixtureFindings(),
-    { ...file, id: '1:2', aliasOf: file.id },
-    {
-      ...file,
-      id: '1:3',
-      displayName: 'large.bin',
-      logicalBytes: '9007199254740993',
-      allocatedBytes: '9007199254740993',
-    },
+test('native category totals sum to the volume scope, preserve u64 precision and unknown metrics', () => {
+  const progress = fixtureProgress();
+  const volume = progress.volumes[0]!;
+  const categories = categorize([volume]);
+  expect(categories.map((category) => category.name)).toEqual([
+    'Documents',
+    'Archives',
+    'Media',
+    'Other files',
   ]);
   expect(
-    categories.reduce((total, category) => total + category.logicalBytes, 0n),
-  ).toBe(9007199254740998n);
-  expect(
     categories.reduce((total, category) => total + category.allocatedBytes, 0n),
-  ).toBe(9007199254745089n);
+  ).toBe(BigInt(volume.scopeAllocatedBytes));
+  const large: CategoryTotal[] = [
+    {
+      name: 'Other files',
+      logicalBytes: '9007199254740993',
+      allocatedBytes: '9007199254740993',
+      count: 1,
+    },
+    ...fixtureCategories(),
+  ];
+  const [first] = categorize([{ ...volume, categories: large }]);
+  expect(first?.allocatedBytes).toBe(9007199254740993n);
   expect(formatBytes(null)).toBe('Unavailable');
   expect(formatBytes('0')).toBe('0 B');
+});
+
+test('running scans show live counters and category totals without a final pass', async () => {
+  const api = createFixtureApi();
+  const progress = {
+    ...fixtureProgress('running'),
+    entries: 12_345,
+  };
+  vi.spyOn(api, 'status').mockResolvedValue(progress);
+  const summary = vi.spyOn(api, 'summary');
+  render(
+    <ScanProvider api={api}>
+      <Overview onInvestigate={() => undefined} />
+    </ScanProvider>,
+  );
+  await act(async () => vi.advanceTimersByTimeAsync(0));
+  fireEvent.click(screen.getByRole('button', { name: 'Start scan' }));
+  await act(async () => vi.advanceTimersByTimeAsync(640));
+  expect(screen.getByText(/12,345 entries observed/)).toBeTruthy();
+  expect(screen.getAllByText(/Live category totals/).length).toBeGreaterThan(0);
+  expect(
+    screen.getByRole('button', { name: 'Investigate Documents' }),
+  ).toHaveProperty('disabled', true);
+  expect(summary).not.toHaveBeenCalled();
+});
+
+test('retention is plain information and untracked sharing is a qualified unknown', async () => {
+  const api = createFixtureApi();
+  const progress = { ...fixtureProgress(), sharingUntracked: true };
+  serveScan(api, progress, fixtureFindings());
+  render(
+    <ScanProvider api={api}>
+      <Overview onInvestigate={() => undefined} />
+    </ScanProvider>,
+  );
+  await act(async () => vi.advanceTimersByTimeAsync(0));
+  fireEvent.click(screen.getByRole('button', { name: 'Start scan' }));
+  await act(async () => vi.advanceTimersByTimeAsync(320));
+  expect(screen.getByText(/true figure is unknown/)).toBeTruthy();
+  expect(screen.getByText(/summarized in their folders/)).toBeTruthy();
+  expect(document.body.textContent).not.toMatch(
+    /\bcap(ped)?\b.*entr|entry limit/i,
+  );
 });
 
 test('appearance edits preserve scan freshness and migrate legacy preference until first native save', async () => {
@@ -306,16 +364,11 @@ test('unavailable volume metrics stay unknown in rendered Overview', async () =>
       },
       scopeLogicalBytes: '5',
       scopeAllocatedBytes: '4096',
-      categories: [],
+      categories: fixtureCategories(),
       unscannedOrUnexplainedBytes: null,
     },
   ];
-  vi.spyOn(api, 'page').mockImplementation(async (_generation, offset) => ({
-    progress,
-    offset,
-    nextOffset: null,
-    findings: fixtureFindings(),
-  }));
+  serveScan(api, progress, fixtureFindings());
   render(
     <ScanProvider api={api}>
       <Overview onInvestigate={() => undefined} />
@@ -332,26 +385,22 @@ test('unavailable volume metrics stay unknown in rendered Overview', async () =>
 
 test('capped native contributions propagate independently through category sums without precision loss', () => {
   const maximum = '18446744073709551615';
-  const file = fixtureFindings()[1]!;
-  const findings = [
-    { ...file, logicalBytes: maximum, allocatedBytes: '5' },
-    { ...file, id: '1:2', logicalBytes: '1', allocatedBytes: '7' },
+  const volume = fixtureProgress().volumes[0]!;
+  const categories = categorize([
     {
-      ...file,
-      id: '1:3',
-      displayName: 'synthetic.jpg',
-      logicalBytes: '3',
-      allocatedBytes: maximum,
+      ...volume,
+      categories: [
+        {
+          name: 'Documents',
+          logicalBytes: maximum,
+          allocatedBytes: '12',
+          count: 2,
+        },
+        { name: 'Media', logicalBytes: '3', allocatedBytes: maximum, count: 1 },
+        { name: 'Documents', logicalBytes: '1', allocatedBytes: '0', count: 0 },
+      ],
     },
-    {
-      ...file,
-      id: '1:4',
-      aliasOf: file.id,
-      logicalBytes: maximum,
-      allocatedBytes: maximum,
-    },
-  ];
-  const categories = categorize(findings);
+  ]);
   const documents = categories.find(
     (category) => category.name === 'Documents',
   )!;
@@ -377,14 +426,9 @@ test.each(['allocation', 'volume'] as const)(
     const maximum = '18446744073709551615';
     const api = createFixtureApi();
     const progress = fixtureProgress();
-    const file = {
-      ...fixtureFindings()[1]!,
-      allocatedBytes: source === 'allocation' ? maximum : '5',
-      logicalBytes: maximum,
-    };
-    const findings = [fixtureFindings()[0]!, file];
+    const allocated = source === 'allocation' ? maximum : '5';
     progress.logicalBytes = maximum;
-    progress.allocatedBytes = file.allocatedBytes;
+    progress.allocatedBytes = allocated;
     progress.volumes = [
       {
         volume: {
@@ -395,18 +439,20 @@ test.each(['allocation', 'volume'] as const)(
           availableBytes: '0',
         },
         scopeLogicalBytes: maximum,
-        scopeAllocatedBytes: file.allocatedBytes,
-        categories: [],
+        scopeAllocatedBytes: allocated,
+        categories: [
+          {
+            name: 'Documents',
+            logicalBytes: maximum,
+            allocatedBytes: allocated,
+            count: 1,
+          },
+        ],
         unscannedOrUnexplainedBytes:
           source === 'allocation' ? '0' : '18446744073709551610',
       },
     ];
-    vi.spyOn(api, 'page').mockImplementation(async (_generation, offset) => ({
-      progress,
-      offset,
-      nextOffset: null,
-      findings,
-    }));
+    serveScan(api, progress, fixtureFindings());
     render(
       <ScanProvider api={api}>
         <Overview onInvestigate={() => undefined} />

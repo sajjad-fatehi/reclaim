@@ -7,7 +7,7 @@ impl Recognizer<'_> {
         let Some(marker) = self.child(index, ".git") else {
             return;
         };
-        let main = self.records[marker].finding.kind == Kind::Directory;
+        let main = self.kind_of(marker) == Kind::Directory;
         self.add(
             index,
             Family::Git,
@@ -47,7 +47,7 @@ impl Recognizer<'_> {
         let common = if main {
             Some(metadata)
         } else {
-            self.child(metadata, "commondir")
+            self.probe(metadata, "commondir")
                 .and_then(|record| self.text(record))
                 .and_then(|target| self.resolve(metadata, target.trim()))
         };
@@ -55,11 +55,11 @@ impl Recognizer<'_> {
             self.diagnostic(marker, "worktree_common_metadata_outside_scan_or_invalid");
             return;
         };
-        if self.child(common, "objects").is_none() || self.child(common, "config").is_none() {
+        if self.probe(common, "objects").is_none() || self.probe(common, "config").is_none() {
             self.diagnostic(common, "worktree_repository_metadata_missing");
             return;
         }
-        let Some(head_index) = self.child(metadata, "HEAD") else {
+        let Some(head_index) = self.probe(metadata, "HEAD") else {
             self.diagnostic(metadata, "worktree_head_missing");
             return;
         };
@@ -79,23 +79,23 @@ impl Recognizer<'_> {
         }
         if !main {
             let backlink = self
-                .child(metadata, "gitdir")
+                .probe(metadata, "gitdir")
                 .and_then(|record| self.text(record))
                 .and_then(|target| self.resolve(metadata, target.trim()));
             if backlink != Some(marker)
-                || self.records[metadata]
-                    .parent
-                    .and_then(|parent| self.records[parent].parent)
+                || self
+                    .parent_of(metadata)
+                    .and_then(|parent| self.parent_of(parent))
                     != Some(common)
             {
                 self.diagnostic(marker, "worktree_registry_backlink_mismatch");
                 return;
             }
         }
-        let locked = self.child(metadata, "locked").is_some()
-            || self.child(metadata, "index.lock").is_some()
-            || self.child(common, "index.lock").is_some();
-        let repository = self.records[common].parent;
+        let locked = self.probe(metadata, "locked").is_some()
+            || self.probe(metadata, "index.lock").is_some()
+            || self.probe(common, "index.lock").is_some();
+        let repository = self.parent_of(common);
         let family = self
             .path(index)
             .map(|path| {
@@ -115,13 +115,14 @@ impl Recognizer<'_> {
             .unwrap_or(Family::Git);
         self.projects.insert(index);
         let artifact = self.artifacts[&index];
-        self.result.findings[artifact].project_id = Some(self.records[index].finding.id.clone());
+        self.result.findings[artifact].project_id = self.retained_id(index);
         self.result.findings[artifact].confidence = Confidence::Verified;
         if self.result.findings[artifact].nature == Nature::Worktree {
             self.result.findings[artifact].family = family;
         }
+        let marker_id = self.id_of(marker).to_owned();
         self.result.findings[artifact].evidence.push(Evidence {
-            finding_id: self.records[marker].finding.id.clone(),
+            finding_id: marker_id,
             method: "git_worktree_registry".into(),
         });
         let changes = if locked {
@@ -130,8 +131,8 @@ impl Recognizer<'_> {
             self.git_status(index, metadata, common)
         };
         self.result.findings[artifact].worktree = Some(Worktree {
-            repository_id: repository.map(|repository| self.records[repository].finding.id.clone()),
-            metadata_id: Some(self.records[metadata].finding.id.clone()),
+            repository_id: repository.and_then(|repository| self.retained_id(repository)),
+            metadata_id: self.retained_id(metadata),
             branch,
             main,
             detached,
@@ -140,35 +141,33 @@ impl Recognizer<'_> {
         });
     }
 
-    fn resolve(&self, base: usize, target: &str) -> Option<usize> {
+    fn resolve(&mut self, base: usize, target: &str) -> Option<usize> {
         let target = Path::new(target);
         let path = if target.is_absolute() {
             target.to_owned()
         } else {
             self.path(base)?.join(target)
         };
-        self.paths.get(&normalize(&path)?).copied()
+        let path = normalize(&path)?;
+        self.locate(&path)
     }
 
     fn git_status(&mut self, index: usize, metadata: usize, common: usize) -> ChangeState {
         if self.stopped() {
             return ChangeState::Unknown;
         }
-        if !self.records[index].finding.complete
-            || !self.records[common].finding.complete
-            || !self.records[metadata].finding.complete
-        {
+        if !self.complete_of(index) || !self.complete_of(common) || !self.complete_of(metadata) {
             self.diagnostic(index, "worktree_incomplete_scope");
             return ChangeState::Unknown;
         }
-        let Some(configuration) = self.child(common, "config") else {
+        let Some(configuration) = self.probe(common, "config") else {
             self.diagnostic(common, "git_configuration_unavailable");
             return ChangeState::Unknown;
         };
         let Some(content) = self.text(configuration) else {
             return ChangeState::Unknown;
         };
-        if !safe_configuration(&content) || self.child(metadata, "config.worktree").is_some() {
+        if !safe_configuration(&content) || self.probe(metadata, "config.worktree").is_some() {
             self.diagnostic(configuration, "unsupported_git_configuration");
             return ChangeState::Unknown;
         }
