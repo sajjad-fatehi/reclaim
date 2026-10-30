@@ -1,25 +1,30 @@
 //! Read-only recognition over one scanner generation. Findings never grant removal authority.
 
-use crate::scan::{display, Kind, Record, Root};
-use rustix::fs::{self, Mode, OFlags};
+use crate::scan::{display, Detail, Kind, Record, Root};
+use rustix::fs::{self, AtFlags, Dir, Mode, OFlags};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::Read;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 mod families;
 mod git;
+mod pins;
+
+pub use pins::is_pinned;
 
 const MAX_METADATA_BYTES: usize = 65_536;
 const MAX_TOTAL_METADATA: usize = 8 * 1024 * 1024;
 const MAX_METADATA_FILES: usize = 4096;
 const MAX_DIAGNOSTICS: usize = 256;
-const MAX_PATH_INDEX_BYTES: usize = 16 * 1024 * 1024;
+const MAX_PROBES: usize = 8192;
+const MAX_LISTED_ENTRIES: usize = 1024;
 const RECOGNITION_BUDGET: Duration = Duration::from_secs(15);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -93,6 +98,9 @@ pub struct Artifact {
     pub nature: Nature,
     /// Scanner ID of the nearest verified project; null for shared/unassigned data.
     pub project_id: Option<String>,
+    pub display_name: String,
+    pub parent_id: Option<String>,
+    pub kind: Kind,
     pub confidence: Confidence,
     pub evidence: Vec<Evidence>,
     pub consequence: String,
@@ -148,60 +156,84 @@ pub struct Recognition {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// A file or directory reached by `probe()` that the scanner did not retain.
+struct Probed {
+    parent: usize,
+    name: OsString,
+    kind: Kind,
+    identity: String,
+}
+
+/// Handles below `records.len()` are retained scanner records; the rest index `probed`.
 struct Recognizer<'records> {
     records: &'records [Record],
-    paths: HashMap<PathBuf, usize>,
-    children: HashMap<(usize, std::ffi::OsString), usize>,
+    roots: Vec<usize>,
+    children: HashMap<(usize, OsString), usize>,
     children_by_parent: Vec<Vec<usize>>,
+    probed: Vec<Probed>,
+    probe_cache: HashMap<(usize, OsString), Option<usize>>,
+    probes: usize,
+    store_locations: Vec<(Family, PathBuf)>,
     contents: HashMap<usize, Option<String>>,
     bytes_read: usize,
     reads: usize,
     cancel: &'records AtomicBool,
     started: Instant,
+    pins_exhausted: bool,
     result: Recognition,
     artifacts: HashMap<usize, usize>,
     projects: HashSet<usize>,
 }
 
 /// Only native scanner records may be supplied. No display path is resolved as authority.
-pub fn recognize(_generation: u32, records: &[Record], cancel: &AtomicBool) -> Recognition {
-    let mut recognizer = Recognizer {
-        records,
-        paths: HashMap::new(),
-        children: HashMap::new(),
-        children_by_parent: vec![Vec::new(); records.len()],
-        contents: HashMap::new(),
-        bytes_read: 0,
-        reads: 0,
-        cancel,
-        started: Instant::now(),
-        result: Recognition::default(),
-        artifacts: HashMap::new(),
-        projects: HashSet::new(),
-    };
+/// `pins_exhausted` reports that the scanner could not retain every marker it was asked to.
+pub fn recognize(records: &[Record], cancel: &AtomicBool, pins_exhausted: bool) -> Recognition {
+    let mut recognizer = Recognizer::new(records, cancel, pins_exhausted);
     recognizer.run();
     recognizer.result
 }
 
-impl Recognizer<'_> {
+impl<'records> Recognizer<'records> {
+    fn new(
+        records: &'records [Record],
+        cancel: &'records AtomicBool,
+        pins_exhausted: bool,
+    ) -> Self {
+        let store_locations = pins::STORE_ENVIRONMENT
+            .iter()
+            .filter_map(|(variable, family)| {
+                std::env::var_os(variable).map(|path| (*family, PathBuf::from(path)))
+            })
+            .collect();
+        Self {
+            records,
+            roots: Vec::new(),
+            children: HashMap::new(),
+            children_by_parent: vec![Vec::new(); records.len()],
+            probed: Vec::new(),
+            probe_cache: HashMap::new(),
+            probes: 0,
+            store_locations,
+            contents: HashMap::new(),
+            bytes_read: 0,
+            reads: 0,
+            cancel,
+            started: Instant::now(),
+            pins_exhausted,
+            result: Recognition::default(),
+            artifacts: HashMap::new(),
+            projects: HashSet::new(),
+        }
+    }
+
     fn run(&mut self) {
-        let mut path_bytes = 0;
         for (index, record) in self.records.iter().enumerate() {
-            if self.stopped() {
-                return;
-            }
-            if let Some(parent) = record.parent {
-                self.children.insert((parent, record.name.clone()), index);
-                self.children_by_parent[parent].push(index);
-            }
-            if let Some(path) = self.path(index) {
-                path_bytes += path.as_os_str().len();
-                if path_bytes > MAX_PATH_INDEX_BYTES {
-                    self.result.limited = true;
-                    self.diagnostic(index, "path_index_budget_exhausted");
-                    return;
+            match record.parent {
+                Some(parent) => {
+                    self.children.insert((parent, record.name.clone()), index);
+                    self.children_by_parent[parent].push(index);
                 }
-                self.paths.insert(path, index);
+                None => self.roots.push(index),
             }
         }
         for index in 0..self.records.len() {
@@ -228,6 +260,10 @@ impl Recognizer<'_> {
             self.classify(index);
         }
         self.account();
+        if self.pins_exhausted && !self.records.is_empty() {
+            self.result.limited = true;
+            self.diagnostic(0, "pin_budget_exhausted");
+        }
         self.result.finished = !self.result.cancelled && !self.result.limited;
     }
 
@@ -241,17 +277,98 @@ impl Recognizer<'_> {
         self.result.cancelled || self.result.limited
     }
 
-    fn path(&self, index: usize) -> Option<PathBuf> {
+    fn record(&self, handle: usize) -> Option<&Record> {
+        self.records.get(handle)
+    }
+
+    fn probed(&self, handle: usize) -> Option<&Probed> {
+        handle
+            .checked_sub(self.records.len())
+            .and_then(|position| self.probed.get(position))
+    }
+
+    fn kind_of(&self, handle: usize) -> Kind {
+        match (self.record(handle), self.probed(handle)) {
+            (Some(record), _) => record.finding.kind,
+            (None, Some(probed)) => probed.kind,
+            _ => Kind::Unknown,
+        }
+    }
+
+    fn complete_of(&self, handle: usize) -> bool {
+        self.record(handle)
+            .map_or(self.probed(handle).is_some(), |record| {
+                record.finding.complete
+            })
+    }
+
+    fn parent_of(&self, handle: usize) -> Option<usize> {
+        match self.record(handle) {
+            Some(record) => record.parent,
+            None => self.probed(handle).map(|probed| probed.parent),
+        }
+    }
+
+    fn name_of(&self, handle: usize) -> &OsStr {
+        match (self.record(handle), self.probed(handle)) {
+            (Some(record), _) => &record.name,
+            (None, Some(probed)) => &probed.name,
+            _ => OsStr::new(""),
+        }
+    }
+
+    fn identity_of(&self, handle: usize) -> Option<&str> {
+        match (self.record(handle), self.probed(handle)) {
+            (Some(record), _) => record.finding.identity.as_deref(),
+            (None, Some(probed)) => Some(&probed.identity),
+            _ => None,
+        }
+    }
+
+    /// Scanner ID of the node itself, or of the nearest retained ancestor for a probed one.
+    fn id_of(&self, handle: usize) -> &str {
+        let mut current = handle;
+        while current >= self.records.len() {
+            let Some(probed) = self.probed(current) else {
+                return "";
+            };
+            current = probed.parent;
+        }
+        &self.records[current].finding.id
+    }
+
+    /// Scanner ID only when the node is itself retained.
+    fn retained_id(&self, handle: usize) -> Option<String> {
+        self.record(handle).map(|record| record.finding.id.clone())
+    }
+
+    fn path(&self, handle: usize) -> Option<PathBuf> {
         let mut components = Vec::new();
-        let mut current = Some(index);
-        while let Some(index) = current {
-            let record = self.records.get(index)?;
-            components.push(record.name.as_os_str());
-            current = record.parent;
+        let mut current = Some(handle);
+        while let Some(handle) = current {
+            if handle >= self.records.len() + self.probed.len() {
+                return None;
+            }
+            components.push(self.name_of(handle));
+            current = self.parent_of(handle);
         }
         Some(components.into_iter().rev().collect())
     }
 
+    /// Compares trailing path components without building the path.
+    fn ends_with(&self, handle: usize, suffix: &str) -> bool {
+        let mut current = Some(handle);
+        for component in Path::new(suffix).components().rev() {
+            let Some(handle) = current else { return false };
+            if component.as_os_str() != self.name_of(handle) {
+                return false;
+            }
+            current = self.parent_of(handle);
+        }
+        true
+    }
+
+    /// Retained children only; every name read this way must be pinned.
     fn child(&self, parent: usize, relative: &str) -> Option<usize> {
         let mut current = parent;
         for component in Path::new(relative).components() {
@@ -263,13 +380,142 @@ impl Recognizer<'_> {
         Some(current)
     }
 
-    fn diagnostic(&mut self, index: usize, reason: &str) {
+    /// Retained child first, then a read-only descriptor-anchored lookup below directories that
+    /// folded some of their children. Never follows symlinks or leaves the mount.
+    fn probe(&mut self, parent: usize, relative: &str) -> Option<usize> {
+        let mut current = parent;
+        for component in Path::new(relative).components() {
+            let Component::Normal(name) = component else {
+                return None;
+            };
+            current = self.step(current, name)?;
+        }
+        Some(current)
+    }
+
+    fn step(&mut self, parent: usize, name: &OsStr) -> Option<usize> {
+        let key = (parent, name.to_owned());
+        if let Some(found) = self.children.get(&key) {
+            return Some(*found);
+        }
+        if self.lists_every_child(parent) || self.kind_of(parent) != Kind::Directory {
+            return None;
+        }
+        if let Some(cached) = self.probe_cache.get(&key) {
+            return *cached;
+        }
+        if self.stopped() || !self.spend_probe(parent) {
+            return None;
+        }
+        let found = self
+            .open_checked(parent)
+            .ok()
+            .and_then(|directory| self.stat_in(parent, &directory, name));
+        self.probe_cache.insert(key, found);
+        found
+    }
+
+    fn lists_every_child(&self, handle: usize) -> bool {
+        self.record(handle).is_some_and(|record| {
+            record.finding.detail == Detail::Full || record.finding.alias_of.is_some()
+        })
+    }
+
+    fn spend_probe(&mut self, near: usize) -> bool {
+        if self.probes >= MAX_PROBES {
+            self.result.limited = true;
+            self.diagnostic(near, "probe_budget_exhausted");
+            return false;
+        }
+        self.probes += 1;
+        true
+    }
+
+    fn stat_in(&mut self, parent: usize, directory: &File, name: &OsStr) -> Option<usize> {
+        let metadata = fs::statat(directory, name, AtFlags::SYMLINK_NOFOLLOW).ok()?;
+        if metadata.st_dev != fs::fstat(directory).ok()?.st_dev {
+            return None;
+        }
+        self.probed.push(Probed {
+            parent,
+            name: name.to_owned(),
+            kind: crate::scan::kind(&metadata),
+            identity: format!("{}:{}", metadata.st_dev, metadata.st_ino),
+        });
+        Some(self.records.len() + self.probed.len() - 1)
+    }
+
+    /// Retained children plus, below a directory that folded some, a bounded listing.
+    fn list_children(&mut self, parent: usize) -> Vec<usize> {
+        let mut handles = self
+            .children_by_parent
+            .get(parent)
+            .cloned()
+            .unwrap_or_default();
+        if self.lists_every_child(parent) || self.kind_of(parent) != Kind::Directory {
+            return handles;
+        }
+        if self.stopped() || !self.spend_probe(parent) {
+            return handles;
+        }
+        let Ok(directory) = self.open_checked(parent) else {
+            return handles;
+        };
+        let Ok(entries) = Dir::read_from(&directory) else {
+            return handles;
+        };
+        let mut listed = 0;
+        for entry in entries.flatten() {
+            let name = OsStr::from_bytes(entry.file_name().to_bytes());
+            if name == "." || name == ".." || self.children.contains_key(&(parent, name.to_owned()))
+            {
+                continue;
+            }
+            listed += 1;
+            if listed > MAX_LISTED_ENTRIES {
+                break;
+            }
+            let key = (parent, name.to_owned());
+            let found = match self.probe_cache.get(&key) {
+                Some(cached) => *cached,
+                None => {
+                    let found = self.stat_in(parent, &directory, name);
+                    self.probe_cache.insert(key, found);
+                    found
+                }
+            };
+            handles.extend(found);
+        }
+        handles
+    }
+
+    /// Resolves an absolute native path below a scanned root; anything outside is `None`.
+    fn locate(&mut self, path: &Path) -> Option<usize> {
+        let root = self
+            .roots
+            .iter()
+            .copied()
+            .filter(|root| path.starts_with(&self.records[*root].name))
+            .max_by_key(|root| self.records[*root].name.len())?;
+        let relative = path.strip_prefix(&self.records[root].name).ok()?;
+        let mut current = root;
+        for component in relative.components() {
+            let Component::Normal(name) = component else {
+                return None;
+            };
+            current = self.step(current, name)?;
+        }
+        Some(current)
+    }
+
+    fn diagnostic(&mut self, handle: usize, reason: &str) {
         if self.result.diagnostics.len() >= MAX_DIAGNOSTICS {
             self.result.diagnostics_truncated = true;
             return;
         }
+        let finding_id = self.id_of(handle).to_owned();
         self.result.diagnostics.push(Diagnostic {
-            finding_id: self.records[index].finding.id.clone(),
+            finding_id,
             reason: reason.into(),
         });
     }
@@ -299,49 +545,50 @@ impl Recognizer<'_> {
         content
     }
 
-    fn open_checked(&self, index: usize) -> Result<File, &'static str> {
+    fn open_checked(&self, handle: usize) -> Result<File, &'static str> {
         let mut chain = Vec::new();
-        let mut current = Some(index);
-        while let Some(index) = current {
-            chain.push(index);
-            current = self.records[index].parent;
+        let mut current = Some(handle);
+        while let Some(handle) = current {
+            chain.push(handle);
+            current = self.parent_of(handle);
         }
         chain.reverse();
         let root_index = *chain.first().ok_or("invalid_record")?;
-        let root = Root::open(Path::new(&self.records[root_index].name))
-            .map_err(|_| "metadata_unavailable_or_changed")?;
+        let root = self.record(root_index).ok_or("invalid_record")?;
+        let root =
+            Root::open(Path::new(&root.name)).map_err(|_| "metadata_unavailable_or_changed")?;
         let mut file = root.directory;
         self.check_identity(root_index, &file)?;
-        for index in chain.into_iter().skip(1) {
-            let record = &self.records[index];
+        for handle in chain.into_iter().skip(1) {
             let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
-            let flags = if record.finding.kind == Kind::Directory {
+            let flags = if self.kind_of(handle) == Kind::Directory {
                 flags | OFlags::DIRECTORY
             } else {
                 flags
             };
             file = File::from(
-                fs::openat(&file, &record.name, flags, Mode::empty())
+                fs::openat(&file, self.name_of(handle), flags, Mode::empty())
                     .map_err(|_| "metadata_unavailable_or_changed")?,
             );
-            self.check_identity(index, &file)?;
+            self.check_identity(handle, &file)?;
         }
         Ok(file)
     }
 
-    fn check_identity(&self, index: usize, file: &File) -> Result<(), &'static str> {
-        let observed = &self.records[index].finding;
+    fn check_identity(&self, handle: usize, file: &File) -> Result<(), &'static str> {
         let metadata = fs::fstat(file).map_err(|_| "metadata_unavailable_or_changed")?;
         let identity = format!("{}:{}", metadata.st_dev, metadata.st_ino);
-        if observed.identity.as_ref() != Some(&identity) || observed.issue.is_some() {
+        let flagged = self
+            .record(handle)
+            .is_some_and(|record| record.finding.issue.is_some());
+        if self.identity_of(handle) != Some(identity.as_str()) || flagged {
             return Err("metadata_unavailable_or_changed");
         }
         Ok(())
     }
 
     fn read_checked(&mut self, index: usize) -> Result<String, &'static str> {
-        let record = &self.records[index];
-        if record.finding.kind != Kind::File || !record.finding.complete {
+        if self.kind_of(index) != Kind::File || !self.complete_of(index) {
             return Err("metadata_not_regular_or_incomplete");
         }
         let mut file = self.open_checked(index)?;
@@ -453,20 +700,11 @@ impl Recognizer<'_> {
             }) {
                 return true;
             }
-            if matches!(
-                self.records[index].name.to_str(),
-                Some(
-                    "node_modules"
-                        | ".venv"
-                        | "venv"
-                        | "target"
-                        | ".git"
-                        | ".next"
-                        | ".nuxt"
-                        | ".svelte-kit"
-                        | ".turbo"
-                )
-            ) {
+            if self.records[index]
+                .name
+                .to_str()
+                .is_some_and(|name| pins::GENERATED_DIRECTORIES.contains(&name))
+            {
                 return true;
             }
             parent = self.records[index].parent;
@@ -474,15 +712,19 @@ impl Recognizer<'_> {
         false
     }
 
-    fn nearest_project(&self, index: usize) -> Option<usize> {
-        let mut current = Some(index);
+    fn nearest(&self, start: Option<usize>, contains: impl Fn(usize) -> bool) -> Option<usize> {
+        let mut current = start;
         while let Some(index) = current {
-            if self.projects.contains(&index) {
+            if contains(index) {
                 return Some(index);
             }
-            current = self.records[index].parent;
+            current = self.parent_of(index);
         }
         None
+    }
+
+    fn nearest_project(&self, index: usize) -> Option<usize> {
+        self.nearest(Some(index), |candidate| self.projects.contains(&candidate))
     }
 
     fn add(
@@ -494,6 +736,9 @@ impl Recognizer<'_> {
         method: &str,
         regenerable: bool,
     ) {
+        let Some(record) = self.records.get(index) else {
+            return;
+        };
         if self.artifacts.contains_key(&index) {
             return;
         }
@@ -511,63 +756,81 @@ impl Recognizer<'_> {
             Nature::Worktree => "Contains repository work. Clean status does not prove dispensability; ignored and untracked data must be preserved.",
             Nature::Temporary => "Explicitly selected temporary storage can contain active or persistent data. Neither location nor age proves safe removal.",
         };
-        self.artifacts.insert(index, self.result.findings.len());
-        self.result.findings.push(Artifact {
-            finding_id: self.records[index].finding.id.clone(),
+        let finding = Artifact {
+            finding_id: record.finding.id.clone(),
             family,
             nature,
             project_id,
+            display_name: record.finding.display_name.clone(),
+            parent_id: record.finding.parent_id.clone(),
+            kind: record.finding.kind,
             confidence: Confidence::Verified,
             evidence: vec![Evidence {
-                finding_id: self.records[evidence].finding.id.clone(),
+                finding_id: self.id_of(evidence).to_owned(),
                 method: method.into(),
             }],
             consequence: consequence.into(),
             cleanup_support: CleanupSupport::InspectionOnly,
             regenerable,
-            complete: self.records[index].finding.complete,
+            complete: record.finding.complete,
             exclusive_logical_bytes: "0".into(),
             exclusive_allocated_bytes: "0".into(),
             owned_logical_bytes: None,
             owned_allocated_bytes: None,
             worktree: None,
-        });
+        };
+        self.artifacts.insert(index, self.result.findings.len());
+        self.result.findings.push(finding);
     }
 
+    /// Scanner totals of one retained node: a directory carries its whole subtree, folded
+    /// descendants included, and an alias contributes nothing.
+    fn subtree_total(&self, index: usize) -> (u64, u64) {
+        let Some(record) = self.records.get(index) else {
+            return (0, 0);
+        };
+        match record.finding.kind {
+            Kind::Directory => (record.finding.logical_bytes, record.finding.allocated_bytes),
+            Kind::File if record.finding.alias_of.is_none() => {
+                (record.finding.logical_bytes, record.finding.allocated_bytes)
+            }
+            _ => (0, 0),
+        }
+    }
+
+    /// Exclusive = subtree minus the subtrees of the nearest nested artifacts; owned = subtree
+    /// minus the subtrees of the nearest nested projects. Both are exact over folded subtrees.
     fn account(&mut self) {
         let mut exclusive = vec![(0_u64, 0_u64); self.result.findings.len()];
-        let mut owned = HashMap::<usize, (u64, u64)>::new();
-        for index in 0..self.records.len() {
-            if index % 128 == 0 && self.stopped() {
-                break;
-            }
-            let record = &self.records[index];
-            let (logical, allocated) = match record.finding.kind {
-                Kind::File if record.finding.alias_of.is_none() => {
-                    (record.finding.logical_bytes, record.finding.allocated_bytes)
-                }
-                Kind::Directory => (
-                    record.finding.folded_logical_bytes,
-                    record.finding.folded_allocated_bytes,
-                ),
-                _ => continue,
-            };
-            if logical == 0 && allocated == 0 {
+        for (index, position) in &self.artifacts {
+            exclusive[*position] = self.subtree_total(*index);
+        }
+        for index in self.artifacts.keys() {
+            let parent = self.parent_of(*index);
+            let Some(owner) =
+                self.nearest(parent, |candidate| self.artifacts.contains_key(&candidate))
+            else {
                 continue;
-            }
-            let mut current = Some(index);
-            while let Some(index) = current {
-                if let Some(artifact) = self.artifacts.get(&index) {
-                    exclusive[*artifact].0 = exclusive[*artifact].0.saturating_add(logical);
-                    exclusive[*artifact].1 = exclusive[*artifact].1.saturating_add(allocated);
-                    break;
-                }
-                current = self.records[index].parent;
-            }
-            if let Some(project) = self.nearest_project(index) {
-                let totals = owned.entry(project).or_default();
-                totals.0 = totals.0.saturating_add(logical);
-                totals.1 = totals.1.saturating_add(allocated);
+            };
+            let (logical, allocated) = self.subtree_total(*index);
+            let totals = &mut exclusive[self.artifacts[&owner]];
+            totals.0 = totals.0.saturating_sub(logical);
+            totals.1 = totals.1.saturating_sub(allocated);
+        }
+        let mut owned = HashMap::<usize, (u64, u64)>::new();
+        for index in &self.projects {
+            owned.insert(*index, self.subtree_total(*index));
+        }
+        for index in &self.projects {
+            let parent = self.parent_of(*index);
+            let Some(owner) = self.nearest(parent, |candidate| self.projects.contains(&candidate))
+            else {
+                continue;
+            };
+            let (logical, allocated) = self.subtree_total(*index);
+            if let Some(totals) = owned.get_mut(&owner) {
+                totals.0 = totals.0.saturating_sub(logical);
+                totals.1 = totals.1.saturating_sub(allocated);
             }
         }
         for (index, artifact) in &self.artifacts {

@@ -209,6 +209,9 @@ pub fn parse_inventory(bytes: &[u8]) -> Result<Inventory, Failure> {
                         Nature::SharedStore
                     },
                     project_id: None,
+                    display_name: finding_id.clone(),
+                    parent_id: None,
+                    kind: crate::scan::Kind::Unknown,
                     confidence: Confidence::Verified,
                     evidence: vec![Evidence {
                         finding_id,

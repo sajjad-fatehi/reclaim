@@ -95,7 +95,7 @@ impl ScanService {
         }
         let path = super::explore::validate_target(&data, index, &roots)?;
         let fresh_recognition =
-            recognition::recognize(generation, &data.records, &AtomicBool::new(false));
+            recognition::recognize(&data.records, &AtomicBool::new(false), data.pins_exhausted);
         let artifact = fresh_recognition
             .findings
             .iter()

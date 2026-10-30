@@ -365,7 +365,7 @@ fn malformed_metadata_missing_scope_symlink_and_changed_identity_stay_unknown() 
         .unwrap();
     fs::rename(root.join("package.json"), root.join("previous")).unwrap();
     write(&root, "package.json", r#"{"name":"replacement"}"#);
-    data.recognition = recognize(7, &data.records, &AtomicBool::new(false));
+    data.recognition = recognize(&data.records, &AtomicBool::new(false), false);
     assert!(data
         .recognition
         .diagnostics
@@ -434,11 +434,11 @@ fn cancellation_and_partial_measurement_do_not_fabricate_completeness() {
     let (_directory, root) = fixture();
     write(&root, "package.json", r#"{"name":"app"}"#);
     let mut data = measure(&root);
-    let cancelled = recognize(7, &data.records, &AtomicBool::new(true));
+    let cancelled = recognize(&data.records, &AtomicBool::new(true), false);
     assert!(cancelled.cancelled);
     assert!(!cancelled.finished);
     data.records[0].finding.complete = false;
-    let partial = recognize(7, &data.records, &AtomicBool::new(false));
+    let partial = recognize(&data.records, &AtomicBool::new(false), false);
     assert!(!partial.findings[0].complete);
 }
 
@@ -596,7 +596,7 @@ fn temporary_paths_are_inventory_only_and_require_selected_root_context() {
     data.records = measured.records.clone();
     data.records[0].name = "/private/tmp".into();
     data.records[0].finding.display_name = "/private/tmp".into();
-    let recognized = recognize(7, &data.records, &AtomicBool::new(false));
+    let recognized = recognize(&data.records, &AtomicBool::new(false), false);
     let temporary = recognized
         .findings
         .iter()
@@ -630,7 +630,7 @@ fn missing_native_git_is_reported_without_starting_tools() {
 }
 
 #[test]
-fn large_native_path_index_stops_before_retaining_unbounded_paths() {
+fn tree_size_alone_never_sets_limited() {
     let (_directory, root) = fixture();
     write(&root, "file", "fixture");
     let mut data = measure(&root);
@@ -640,12 +640,26 @@ fn large_native_path_index_stops_before_retaining_unbounded_paths() {
         let mut record = template.clone();
         record.name = format!("file-{index}").into();
         record.finding.id = format!("7:{index}");
+        record.parent = Some(0);
         data.records.push(record);
     }
-    let report = recognize(7, &data.records, &AtomicBool::new(false));
+    let report = recognize(&data.records, &AtomicBool::new(false), false);
+    assert!(!report.limited);
+    assert!(report.finished);
+}
+
+#[test]
+fn exhausted_scanner_pins_set_limited_honestly() {
+    let (_directory, root) = fixture();
+    write(&root, "app/package.json", r#"{"name":"app"}"#);
+    let data = measure(&root);
+    let report = recognize(&data.records, &AtomicBool::new(false), true);
     assert!(report.limited);
     assert!(!report.finished);
-    assert_eq!(report.diagnostics[0].reason, "path_index_budget_exhausted");
+    assert!(report
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.reason == "pin_budget_exhausted"));
 }
 
 #[test]
@@ -707,20 +721,8 @@ fn account_caps_exclusive_and_owned_byte_totals() {
         create_record(3, Some(1), Kind::File, 9, 11),
     ];
     let cancel = AtomicBool::new(false);
-    let mut recognizer = Recognizer {
-        records: &records,
-        paths: HashMap::new(),
-        children: HashMap::new(),
-        children_by_parent: vec![Vec::new(); records.len()],
-        contents: HashMap::new(),
-        bytes_read: 0,
-        reads: 0,
-        cancel: &cancel,
-        started: Instant::now(),
-        result: Recognition::default(),
-        artifacts: HashMap::new(),
-        projects: HashSet::from([0]),
-    };
+    let mut recognizer = Recognizer::new(&records, &cancel, false);
+    recognizer.projects.insert(0);
     recognizer.add(
         0,
         Family::JavaScript,
@@ -746,4 +748,354 @@ fn account_caps_exclusive_and_owned_byte_totals() {
     assert_eq!(serialized[0]["ownedAllocatedBytes"], capped);
     assert_eq!(serialized[1]["exclusiveLogicalBytes"], capped);
     assert_eq!(serialized[1]["exclusiveAllocatedBytes"], capped);
+}
+
+fn measure_pruned(root: &Path) -> ScanData {
+    let data = Arc::new(Mutex::new(ScanData::new(7)));
+    scan_with_policy(
+        vec![Root::open(root).unwrap()],
+        Vec::new(),
+        RetentionPolicy {
+            depth: 0,
+            threshold: u64::MAX,
+            top_k: 0,
+            node_budget: usize::MAX,
+            pin_predicate: is_pinned,
+        },
+        data.clone(),
+        Arc::new(AtomicBool::new(false)),
+    );
+    Arc::try_unwrap(data).ok().unwrap().into_inner().unwrap()
+}
+
+fn path_of(data: &ScanData, id: &str) -> PathBuf {
+    let index: usize = id.rsplit(':').next().unwrap().parse().unwrap();
+    data.path(index).unwrap()
+}
+
+struct ArtifactView {
+    key: String,
+    evidence: Vec<(String, PathBuf)>,
+}
+
+fn view(data: &ScanData) -> Vec<ArtifactView> {
+    let mut views: Vec<ArtifactView> = data
+        .recognition
+        .findings
+        .iter()
+        .map(|artifact| {
+            let worktree = artifact.worktree.as_ref().map(|worktree| {
+                format!(
+                    "{:?}/{:?}/{}/{}/{}/{:?}/{:?}/{:?}",
+                    worktree.branch,
+                    worktree.changes,
+                    worktree.main,
+                    worktree.detached,
+                    worktree.locked,
+                    worktree.repository_id.as_ref().map(|id| path_of(data, id)),
+                    worktree.metadata_id.as_ref().map(|id| path_of(data, id)),
+                    artifact.worktree.is_some(),
+                )
+            });
+            let key = format!(
+                "{:?}|{:?}|{:?}|{:?}|{:?}|{}|{}|{}|{}|{}|{}|{}|{:?}|{:?}|{}",
+                path_of(data, &artifact.finding_id),
+                artifact.family,
+                artifact.nature,
+                artifact.confidence,
+                artifact.project_id.as_ref().map(|id| path_of(data, id)),
+                artifact.regenerable,
+                artifact.complete,
+                artifact.exclusive_logical_bytes,
+                artifact.exclusive_allocated_bytes,
+                artifact.display_name,
+                artifact.consequence,
+                artifact.parent_id.is_some(),
+                artifact.owned_logical_bytes,
+                artifact.owned_allocated_bytes,
+                worktree.unwrap_or_default(),
+            );
+            ArtifactView {
+                key,
+                evidence: artifact
+                    .evidence
+                    .iter()
+                    .map(|evidence| (evidence.method.clone(), path_of(data, &evidence.finding_id)))
+                    .collect(),
+            }
+        })
+        .collect();
+    views.sort_by(|left, right| left.key.cmp(&right.key));
+    views
+}
+
+fn differential_fixture(root: &Path) {
+    write(
+        root,
+        "app/package.json",
+        r#"{"name":"app","dependencies":{"left-pad":"1","next":"1"}}"#,
+    );
+    write(
+        root,
+        "app/node_modules/left-pad/package.json",
+        r#"{"name":"left-pad"}"#,
+    );
+    write(
+        root,
+        "app/node_modules/left-pad/index.js",
+        "module.exports = 1;",
+    );
+    write(
+        root,
+        "app/node_modules/other/index.js",
+        "module.exports = 2;",
+    );
+    write(root, "app/.next/BUILD_ID", "build");
+    write(root, "app/.next/server/page.js", "page");
+    write(root, "app/.env", "SECRET=1");
+    write(root, "app/nested/package.json", r#"{"name":"nested"}"#);
+    write(root, "app/nested/src/main.js", "main();");
+    write(root, "py/pyproject.toml", "[project]\nname = 'py'");
+    write(root, "py/.venv/pyvenv.cfg", "home = /fixture/python");
+    write(root, "py/.venv/lib/site.py", "x = 1");
+    write(
+        root,
+        "rs/Cargo.toml",
+        "[package]\nname='rs'\nversion='0.1.0'",
+    );
+    write(
+        root,
+        "rs/target/.rustc_info.json",
+        r#"{"rustc_fingerprint":1}"#,
+    );
+    write(root, "rs/target/debug/build.o", "object");
+    write(root, "home/.nvm/versions/node/v20/bin/node", "binary");
+    write(
+        root,
+        "home/.nvm/versions/node/v20/include/node/node_version.h",
+        "#define NODE_MAJOR_VERSION 20",
+    );
+    write(root, "home/.claude/settings.json", "{}");
+    write(root, "home/.claude/logs/a.log", "log");
+    write(root, "home/.cache/pip/http-v2/entry", "cached");
+    write(root, "home/Yarn/npm-pkg.zip", "zip");
+    write(
+        root,
+        "home/Library/Application Support/Code/User/settings.json",
+        "{}",
+    );
+    write(
+        root,
+        "home/Library/Application Support/Code/logs/x.log",
+        "log",
+    );
+    write(root, "repo/.git/HEAD", "ref: refs/heads/main\n");
+    write(
+        root,
+        "repo/.git/config",
+        "[core]\n\trepositoryformatversion = 0\n",
+    );
+    write(root, "repo/.git/objects/pack/p", "pack");
+    write(root, "repo/README.md", "# repo");
+    let metadata = root.join("repo/.git/worktrees/wt");
+    write(
+        root,
+        "repo/.git/worktrees/wt/HEAD",
+        "ref: refs/heads/feature\n",
+    );
+    write(root, "repo/.git/worktrees/wt/commondir", "../..\n");
+    write(
+        root,
+        "repo/.git/worktrees/wt/gitdir",
+        &format!("{}\n", root.join("wt/.git").display()),
+    );
+    write(
+        root,
+        "wt/.git",
+        &format!("gitdir: {}\n", metadata.display()),
+    );
+    write(root, "wt/file.txt", "work");
+}
+
+fn assert_same_recognition(full: &ScanData, pruned: &ScanData) {
+    let (full_views, pruned_views) = (view(full), view(pruned));
+    assert!(!full_views.is_empty());
+    assert_eq!(full_views.len(), pruned_views.len());
+    for (left, right) in full_views.iter().zip(&pruned_views) {
+        assert_eq!(left.key, right.key);
+        assert_eq!(left.evidence.len(), right.evidence.len());
+        for ((left_method, left_path), (right_method, right_path)) in
+            left.evidence.iter().zip(&right.evidence)
+        {
+            assert_eq!(left_method, right_method);
+            assert!(
+                left_path.starts_with(right_path),
+                "{left_path:?} is not at or below {right_path:?}"
+            );
+        }
+    }
+    assert_eq!(full.recognition.limited, pruned.recognition.limited);
+    assert_eq!(full.recognition.finished, pruned.recognition.finished);
+}
+
+#[test]
+fn pruned_retention_recognizes_the_same_artifacts_and_byte_totals() {
+    let (_directory, root) = fixture();
+    differential_fixture(&root);
+    let full = measure(&root);
+    let pruned = measure_pruned(&root);
+    assert!(pruned.records.len() < full.records.len());
+    assert!(!pruned.pins_exhausted);
+    assert_eq!(
+        full.progress.allocated_bytes,
+        pruned.progress.allocated_bytes
+    );
+    assert_same_recognition(&full, &pruned);
+    let natures: Vec<_> = full
+        .recognition
+        .findings
+        .iter()
+        .map(|artifact| (artifact.family, artifact.nature))
+        .collect();
+    for expected in [
+        (Family::JavaScript, Nature::Dependencies),
+        (Family::JavaScript, Nature::Build),
+        (Family::Python, Nature::Dependencies),
+        (Family::Rust, Nature::Build),
+        (Family::Nvm, Nature::Runtime),
+        (Family::Claude, Nature::EditorState),
+        (Family::VsCode, Nature::EditorState),
+        (Family::Yarn, Nature::SharedStore),
+        (Family::Git, Nature::Worktree),
+        (Family::Protected, Nature::Protected),
+    ] {
+        assert!(natures.contains(&expected), "{expected:?} missing");
+    }
+}
+
+#[test]
+fn probing_never_follows_a_symlinked_dependency() {
+    let (_directory, root) = fixture();
+    let (_outside_guard, outside) = fixture();
+    write(
+        &root,
+        "app/package.json",
+        r#"{"name":"app","dependencies":{"dep":"1"}}"#,
+    );
+    write(&outside, "dep/package.json", r#"{"name":"dep"}"#);
+    fs::create_dir_all(root.join("app/node_modules")).unwrap();
+    symlink(outside.join("dep"), root.join("app/node_modules/dep")).unwrap();
+    for data in [measure(&root), measure_pruned(&root)] {
+        assert!(artifact(&data, "app/node_modules").is_none());
+        assert!(artifact(&data, "app").is_some());
+    }
+}
+
+#[test]
+fn unretained_configured_store_is_diagnosed_not_invented() {
+    let (_directory, root) = fixture();
+    write(&root, "home/.npmrc", "cache=store\n");
+    write(&root, "home/store/entry", "x");
+    let full = measure(&root);
+    assert!(artifact(&full, "home/store").is_some());
+    let pruned = measure_pruned(&root);
+    assert!(artifact(&pruned, "home/store").is_none());
+    assert!(pruned
+        .recognition
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.reason == "configured_location_not_retained"));
+}
+
+#[test]
+fn artifacts_carry_display_fields() {
+    let (_directory, root) = fixture();
+    write(&root, "app/package.json", r#"{"name":"app"}"#);
+    let data = measure_pruned(&root);
+    let project = artifact(&data, "app").unwrap();
+    assert_eq!(project.display_name, "app");
+    assert_eq!(project.kind, Kind::Directory);
+    assert!(project.parent_id.is_some());
+}
+
+#[test]
+fn pins_use_parent_context() {
+    let pinned =
+        |parent: &str, name: &str, kind: Kind| is_pinned(Path::new(parent), OsStr::new(name), kind);
+    assert!(pinned("/home/app", "package.json", Kind::File));
+    assert!(!pinned(
+        "/home/app/node_modules/dep",
+        "package.json",
+        Kind::File
+    ));
+    assert!(pinned("/home/app", "node_modules", Kind::Directory));
+    assert!(pinned("/home", ".env", Kind::Symlink));
+    assert!(pinned("/home/.claude", "logs", Kind::Directory));
+    assert!(!pinned("/home/app", "logs", Kind::Directory));
+    assert!(pinned("/h/.nvm/versions/node", "v20", Kind::Directory));
+    assert!(pinned("/h/repo/.git/worktrees", "wt", Kind::Directory));
+    assert!(!pinned("/h/app", "README", Kind::File));
+}
+
+fn call_literals(source: &str, needle: &str) -> Vec<String> {
+    let mut literals = Vec::new();
+    for (position, _) in source.match_indices(needle) {
+        let rest = &source[position + needle.len()..];
+        let mut depth = 0_i32;
+        let mut comma = None;
+        for (offset, character) in rest.char_indices() {
+            match character {
+                '(' => depth += 1,
+                ')' if depth == 0 => break,
+                ')' => depth -= 1,
+                ',' if depth == 0 => {
+                    comma = Some(offset);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        let Some(comma) = comma else { continue };
+        let argument = rest[comma + 1..].trim_start();
+        if let Some(literal) = argument.strip_prefix('"') {
+            literals.push(literal[..literal.find('"').unwrap()].to_owned());
+        }
+    }
+    literals
+}
+
+#[test]
+fn every_literal_read_by_name_is_pinned_or_listed_for_lazy_probing() {
+    let sources = [
+        include_str!("families.rs"),
+        include_str!("git.rs"),
+        include_str!("../recognition.rs"),
+    ];
+    let pinned = |name: &str| {
+        let parent = Path::new("/project");
+        [Kind::File, Kind::Directory]
+            .into_iter()
+            .any(|kind| is_pinned(parent, OsStr::new(name), kind))
+    };
+    let mut checked = 0;
+    for source in sources {
+        for literal in call_literals(source, ".child(") {
+            assert!(pinned(&literal), "child({literal:?}) is not pinned");
+            checked += 1;
+        }
+        for literal in call_literals(source, ".probe(") {
+            assert!(
+                pins::is_known_probe(&literal) || (!literal.contains('/') && pinned(&literal)),
+                "probe({literal:?}) is neither pinned nor listed for lazy probing"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 20);
+    for manifest in ["pyproject.toml", "Cargo.toml", "package.json"] {
+        assert!(pinned(manifest));
+    }
+    for (_, _, marker) in pins::FRAMEWORK_OUTPUTS {
+        assert!(pins::is_known_probe(marker));
+    }
 }
