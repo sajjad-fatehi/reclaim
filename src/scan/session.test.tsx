@@ -127,6 +127,32 @@ test('rate limits retry transparently and settling takes a handful of IPC calls'
   disconnect();
 });
 
+test('a summary that is always rate limited ends in a visible error, not endless scanning', async () => {
+  const api = createFixtureApi();
+  vi.spyOn(api, 'summary').mockRejectedValue({ code: 'rate_limited' });
+  const { session, disconnect } = await initialize(api);
+  await session.start();
+  await vi.advanceTimersByTimeAsync(30_000);
+  const state = session.getSnapshot();
+  expect(state.snapshot?.settled).toBe(false);
+  expect(state.error).toMatch(/connection interrupted/);
+  disconnect();
+});
+
+test('a malformed or oversized summary ends in a visible error with retry', async () => {
+  const api = createFixtureApi();
+  vi.spyOn(api, 'summary').mockRejectedValueOnce({ code: 'invalid_response' });
+  const { session, disconnect } = await initialize(api);
+  await session.start();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(session.getSnapshot().error).toMatch(/connection interrupted/);
+  session.resume();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(session.getSnapshot().snapshot?.settled).toBe(true);
+  expect(session.getSnapshot().error).toBeNull();
+  disconnect();
+});
+
 test('real Overview fixture flow edits scope and exclusions, starts explicitly and hands off category', async () => {
   const api = createFixtureApi();
   const start = vi.spyOn(api, 'start');

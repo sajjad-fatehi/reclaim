@@ -205,7 +205,7 @@ impl ScanService {
     ) -> BoundaryResult<Output> {
         let mut authority = lock(&self.authority);
         let session = authority.session(generation)?;
-        throttle(session)?;
+        throttle(&mut session.last_read)?;
         let data = lock(&session.data);
         if data.progress.status == Status::Running {
             return Err(ErrorCode::Busy.into());
@@ -739,6 +739,39 @@ mod tests {
             service.summary(generation).err().unwrap().code,
             ErrorCode::Busy
         );
+    }
+
+    #[test]
+    fn summary_directly_after_status_is_not_rate_limited() {
+        let (_temporary, service, generation, _root) = sorted_fixture();
+        reset_throttle(&service);
+        service.status(generation).unwrap();
+        assert!(service.summary(generation).is_ok());
+    }
+
+    #[test]
+    fn child_index_is_built_once_and_reused_across_reads() {
+        let (_temporary, service, generation, _root) = sorted_fixture();
+        let pointer = |service: &ScanService| {
+            lock(&service.authority)
+                .session
+                .as_ref()
+                .unwrap()
+                .index
+                .as_ref()
+                .map(|index| index.items.as_ptr())
+        };
+        reset_throttle(&service);
+        service.summary(generation).unwrap();
+        let built = pointer(&service);
+        assert!(built.is_some());
+        reset_throttle(&service);
+        service.summary(generation).unwrap();
+        reset_throttle(&service);
+        service
+            .children(generation, None, None, 1, Sort::Size)
+            .unwrap();
+        assert_eq!(pointer(&service), built);
     }
 
     #[test]
