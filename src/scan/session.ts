@@ -10,6 +10,8 @@ import type {
   Summary,
 } from './contract';
 
+const MAX_CONSECUTIVE_RATE_LIMITS = 20;
+
 export interface ScanSnapshot {
   scope: Scope;
   progress: Progress;
@@ -95,6 +97,7 @@ export class ScanSession {
   private pendingWrite: Promise<void> = Promise.resolve();
   private revision = 0;
   private polling = false;
+  private rateLimited = 0;
 
   constructor(readonly api: ScanApi) {}
 
@@ -332,6 +335,7 @@ export class ScanSession {
       if (progress.generation !== generation)
         throw { code: 'stale_generation' };
       if (progress.status === 'running') {
+        this.rateLimited = 0;
         this.update({ snapshot: { ...snapshot, progress } });
         this.schedule();
         return;
@@ -343,6 +347,7 @@ export class ScanSession {
         summary.progress.generation !== generation
       )
         throw { code: 'stale_generation' };
+      this.rateLimited = 0;
       const findings = summaryFindings(summary);
       if (findings.some((finding) => !finding.id.startsWith(`${generation}:`)))
         throw { code: 'stale_generation' };
@@ -358,7 +363,11 @@ export class ScanSession {
       });
     } catch (error) {
       if (this.state.snapshot?.progress.generation !== generation) return;
-      if (errorCode(error) === 'rate_limited') {
+      if (
+        errorCode(error) === 'rate_limited' &&
+        this.rateLimited < MAX_CONSECUTIVE_RATE_LIMITS
+      ) {
+        this.rateLimited += 1;
         this.schedule();
         return;
       }

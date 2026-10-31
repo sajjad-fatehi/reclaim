@@ -99,7 +99,10 @@ struct Session {
     scope: Scope,
     data: Arc<Mutex<ScanData>>,
     cancel: Arc<AtomicBool>,
+    /// Browse reads share one clock; status polling has its own so the poll
+    /// that observes the terminal state never starves the summary read after it.
     last_read: Option<Instant>,
+    last_status_read: Option<Instant>,
     index: Option<browse::ChildIndex>,
 }
 
@@ -349,6 +352,7 @@ impl ScanService {
             data: data.clone(),
             cancel: cancel.clone(),
             last_read: None,
+            last_status_read: None,
             index: None,
         });
         let failure_data = data.clone();
@@ -374,7 +378,7 @@ impl ScanService {
     pub fn status(&self, generation: u32) -> BoundaryResult<Progress> {
         let mut authority = lock(&self.authority);
         let session = authority.session(generation)?;
-        throttle(session)?;
+        throttle(&mut session.last_status_read)?;
         let progress = lock(&session.data).progress.clone();
         Ok(progress)
     }
@@ -400,15 +404,12 @@ fn fail_worker(data: &Mutex<ScanData>) {
     }
 }
 
-fn throttle(session: &mut Session) -> BoundaryResult<()> {
+fn throttle(last_read: &mut Option<Instant>) -> BoundaryResult<()> {
     let now = Instant::now();
-    if session
-        .last_read
-        .is_some_and(|last| now.duration_since(last) < READ_INTERVAL)
-    {
+    if last_read.is_some_and(|last| now.duration_since(last) < READ_INTERVAL) {
         return Err(ErrorCode::RateLimited.into());
     }
-    session.last_read = Some(now);
+    *last_read = Some(now);
     Ok(())
 }
 
@@ -525,7 +526,7 @@ pub async fn scan_current<R: Runtime>(
             progress: None,
         }),
         Some(session) => {
-            throttle(session)?;
+            throttle(&mut session.last_status_read)?;
             Ok(Current {
                 scope: Some(session.scope.clone()),
                 progress: Some(lock(&session.data).progress.clone()),
@@ -578,7 +579,7 @@ impl ScanService {
         }
         let mut authority = lock(&self.authority);
         let session = authority.session(generation)?;
-        throttle(session)?;
+        throttle(&mut session.last_read)?;
         let data = lock(&session.data);
         if data.progress.status == Status::Running {
             return Err(ErrorCode::Busy.into());
@@ -693,7 +694,11 @@ mod tests {
         assert_eq!(roots.findings.len(), 1);
         assert_eq!(roots.next_cursor, None);
         assert_eq!(
-            service.status(progress.generation).unwrap_err().code,
+            service
+                .children(progress.generation, None, None, 1, browse::Sort::Size)
+                .err()
+                .unwrap()
+                .code,
             ErrorCode::RateLimited
         );
         lock(&service.authority).session.as_mut().unwrap().last_read = None;
@@ -730,6 +735,7 @@ mod tests {
             data: data.clone(),
             cancel: Arc::new(AtomicBool::new(false)),
             last_read: None,
+            last_status_read: None,
             index: None,
         });
         assert_eq!(service.start(&scope.id).unwrap_err().code, ErrorCode::Busy);
@@ -986,7 +992,11 @@ mod tests {
             &terminal(&service).logical_bytes.to_string()
         );
         assert_eq!(
-            service.status(started.generation).unwrap_err().code,
+            service
+                .children(started.generation, None, None, 1, browse::Sort::Size)
+                .err()
+                .unwrap()
+                .code,
             ErrorCode::RateLimited
         );
         lock(&service.authority).session.as_mut().unwrap().last_read = None;
